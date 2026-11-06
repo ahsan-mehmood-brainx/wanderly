@@ -1,0 +1,112 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# generated native folders (Continuous Native Generation)
+/ios
+/android
+
+# Native build artifacts
+.kotlin/
+*.orig.*
+build/
+.gradle/
+*.apk
+*.aab
+*.ipa
+*.app
+*.dSYM.zip
+*.dSYM
+Pods/
+DerivedData/
+xcuserdata/
+local.properties
+
+# Signing keys & certificates
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+
+# Metro
+.metro-health-check*
+
+# Logs & debug
+logs/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+.env*.local
+
+# EAS
+.eas/
+
+# Testing / coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# TypeScript / tooling caches
+*.tsbuildinfo
+.eslintcache
+.cache/
+.turbo/
+.parcel-cache/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs / editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+*.sublime-workspace
+
+# Claude Code (local-only settings)
+.claude/settings.local.json
+.claude/*.local.*
+
+# Temp
+tmp/
+temp/
+*.tmp
