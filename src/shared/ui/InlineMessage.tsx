@@ -19,7 +19,13 @@ export function InlineMessage({ message, dismissLabel, onDismiss }: InlineMessag
     <View
       style={[
         styles.container,
-        { backgroundColor: colors.dangerSurface, borderColor: colors.danger, borderRadius: radii.md, padding: spacing.md, gap: spacing.md },
+        {
+          backgroundColor: colors.dangerSurface,
+          borderColor: colors.danger,
+          borderRadius: radii.md,
+          padding: spacing.md,
+          gap: spacing.md,
+        },
       ]}
     >
       {/* The role sits on the text (an accessibility element) so the dismiss button stays separately focusable. */}

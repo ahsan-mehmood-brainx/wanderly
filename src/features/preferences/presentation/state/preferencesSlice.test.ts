@@ -1,16 +1,15 @@
+import { waitFor } from '@testing-library/react-native';
+
 import { AppError } from '@/core/errors/AppError';
 import { err, ok, type Result } from '@/core/result';
 import { createAppStore } from '@/core/store/store';
+import { MockPreferencesRepository } from '@/testing/MockPreferencesRepository';
 import { createTestDependencies, createTestLogger } from '@/testing/testDependencies';
 
 import { DEFAULT_PREFERENCES, type Preferences } from '../../domain/Preferences';
 import { type PreferencesRepository } from '../../domain/PreferencesRepository';
-import {
-  loadPreferences,
-  PREFERENCES_LOAD_TIMEOUT_MS,
-  saveErrorDismissed,
-  updatePreferences,
-} from './preferencesSlice';
+import { PREFERENCES_LOAD_TIMEOUT_MS } from '../../domain/usecases/LoadPreferences';
+import { loadPreferences, saveErrorDismissed, updatePreferences } from './preferencesSlice';
 import { selectPreferences, selectPreferencesReady, selectPreferencesSaveError } from './selectors';
 
 const storageError = new AppError('storage', 'boom');
@@ -33,7 +32,9 @@ function setup(repository: PreferencesRepository = createFakeRepository()) {
 describe('preferences state', () => {
   describe('loadPreferences', () => {
     it('applies stored preferences and becomes ready', async () => {
-      const repository = createFakeRepository({ load: jest.fn().mockResolvedValue(ok({ theme: 'dark', language: 'es' })) });
+      const repository = createFakeRepository({
+        load: jest.fn().mockResolvedValue(ok({ theme: 'dark', language: 'es' })),
+      });
       const { store } = setup(repository);
 
       expect(selectPreferencesReady(store.getState())).toBe(false);
@@ -144,11 +145,33 @@ describe('preferences state', () => {
       await store.dispatch(loadPreferences());
 
       const first = store.dispatch(updatePreferences({ theme: 'dark' }));
-      await store.dispatch(updatePreferences({ theme: 'light' }));
+      const second = store.dispatch(updatePreferences({ theme: 'light' }));
+      // Saves are queued, so the older one settles first even though the newer one has started.
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
       failFirstSave(err(storageError));
-      await first;
+      await Promise.all([first, second]);
 
       expect(selectPreferences(store.getState()).theme).toBe('light');
+      expect(selectPreferencesSaveError(store.getState())).toBeNull();
+    });
+
+    it('does not overwrite the untouched setting with defaults when the start-up load failed', async () => {
+      const repository = new MockPreferencesRepository({ theme: 'dark', language: 'es' });
+      repository.loadError = storageError;
+      const { store } = setup(repository);
+      await store.dispatch(loadPreferences());
+      expect(selectPreferences(store.getState())).toEqual(DEFAULT_PREFERENCES);
+
+      // Storage is still unreadable: the change applies for the session but nothing is written.
+      await store.dispatch(updatePreferences({ theme: 'light' }));
+      expect(selectPreferences(store.getState()).theme).toBe('light');
+      expect(selectPreferencesSaveError(store.getState())).toBe('storage');
+      expect(repository.stored).toEqual({ theme: 'dark', language: 'es' });
+
+      // Storage recovers: the change is merged into what was stored.
+      repository.loadError = null;
+      await store.dispatch(updatePreferences({ theme: 'light' }));
+      expect(repository.stored).toEqual({ theme: 'light', language: 'es' });
       expect(selectPreferencesSaveError(store.getState())).toBeNull();
     });
   });

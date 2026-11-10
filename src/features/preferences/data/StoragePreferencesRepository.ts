@@ -5,12 +5,7 @@ import { type Logger } from '@/core/logging/Logger';
 import { err, ok, type Result } from '@/core/result';
 import { type KeyValueStore } from '@/core/storage/KeyValueStore';
 
-import {
-  DEFAULT_PREFERENCES,
-  LANGUAGE_PREFERENCES,
-  THEME_PREFERENCES,
-  type Preferences,
-} from '../domain/Preferences';
+import { DEFAULT_PREFERENCES, LANGUAGE_PREFERENCES, THEME_PREFERENCES, type Preferences } from '../domain/Preferences';
 import { type PreferencesRepository } from '../domain/PreferencesRepository';
 
 export const PREFERENCES_STORAGE_KEY = 'preferences.v1';

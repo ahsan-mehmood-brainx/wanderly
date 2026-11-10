@@ -1,124 +1,174 @@
 ---
-diff_hash: 3457de4e190236ffff25ef714dd1fe1bb67ad296589834dbf5e2eada45c89591
-reviewed_at: 2026-11-10T13:38:37Z
+diff_hash: 84f3f3eacb9022c404782e9da4c26746dd16c2511a9f419206f400ae9efa96ad
+reviewed_at: 2026-11-10T19:54:33Z
 
 ## Summary
 
-Feature 0 (foundation) for Wanderly, an Expo SDK 58 / Expo Router React Native app. 62 staged files. The change adds a feature-based clean architecture: `core/` (Result type, AppError, Logger port, KeyValueStore + AsyncStorage adapter, Redux store with DI through thunk `extraArgument`, typed i18n with en/es, theme tokens and provider), `bootstrap/` (composition root, providers, preferences gate that holds the splash screen), `features/preferences` (domain, Zod-validated repository, slice, view-model hook, Settings screen), `features/explore` (Explore screen), `shared/ui` components, and native-tabs routes under `src/app/(tabs)`. It also adds the Jest/RNTL v14 setup with 39 tests, stricter tsconfig and ESLint rules, app.json plugin config, README, and a staged GitHub workflow (`.github/workflows/code-review-pr.yml`) that posts a PR score from the review ledger.
+Feature 0 foundation for Wanderly (Expo SDK 58 / Expo Router, React Native) plus the shared infrastructure built on it: a typed HTTP layer (`core/http`, axios behind an `HttpClient` port with retries, auth strategies and error normalisation), a Logger port with transports and redaction, connectivity via `expo-network`, a dependency-injection container, a semantic theme with Inter fonts, a shared UI kit (`shared/ui`), the preferences feature split into domain / data / presentation with use cases, and a development-only design-system screen. 111 staged files (109 source/config/doc files plus the deletion of the previous review file and the lockfile).
 
-Fresh review. The previous `brainx-review.md` belonged to commit 7bffe10, which is already finalized in the ledger, so its findings were not carried over. Its one open Low finding (package.json:4, no routes under the Expo Router entry) is resolved by this diff: routes now exist under `src/app/(tabs)` and the old entry files are gone.
+Fresh review, not a re-review: the workspace had no `brainx-review.md`. The previous review (271049d) was not carried over. Two of its open findings are resolved by this diff: the preferences load now has a 3 s timeout (`LoadPreferences`), so a hung storage read no longer holds the splash screen, and the splash background colours in `app.json` now match the theme.
 
-Stack: React (`react` in dependencies, no NestJS marker). This is React Native, so the web-only criteria in the React resource (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404 routes, httpOnly cookies) were not applied. Hooks, state management, error handling, typing, accessibility, and security criteria were.
+Stack: React (`react` in dependencies, no NestJS marker). The runtime is React Native, so the web-only criteria in `react.md` (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404 routes, httpOnly cookies) were not applied. Hooks, state management, error handling, typing, accessibility and security criteria were.
 
-Verification run before review: `tsc --noEmit` passed, `expo lint` passed with 0 problems, `jest` passed (39/39), `expo-doctor` passed 20/20, and `expo export` bundled for iOS and Android. Two library assumptions were checked against installed sources: destructuring `t` from an i18next instance works, and Android's `AppearanceModule.setColorScheme` accepts `'auto'`.
+Skimmed, not read line by line: `README.md`, `docs/ARCHITECTURE.md` (checked only for stale identifiers) and `package-lock.json` (only the `package.json` dependency additions were checked against it). The `.code-reviews/brainx-review.md` deletion is not a code change.
 
-No high or critical issues. Findings are one medium (the PR workflow's score can be forged from the PR branch) and six low items (error visibility, edge-case robustness, cosmetics).
+Verification run before writing this review: `npx tsc --noEmit` clean; `npx expo lint` clean; `npx jest` 27 suites / 178 tests passing.
 
 Cross-repo: only one repository has staged changes.
+
+Re-review (2026-11-10T19:54:33Z): the staged diff changed after the first review, so this run re-evaluated the existing findings only; no new findings were raised. Everything is staged (`git ls-files -m -o` is empty), so the skill's workspace-hash command hashes empty input. `diff_hash` is therefore `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, which leaves out the review file so the hash does not depend on itself. Files edited since the first review: `SavePreferences.ts` (+ test), `preferences/di.ts`, `preferencesSlice.ts` (+ test), `redact.ts` (+ test), `normalizeHttpError.ts` (+ test), `settings/design-system.tsx`, `DesignSystemScreen.tsx`, `AppHeader.tsx`. `coreFactories.ts` is unchanged. Six findings are fixed and one Low is still open. Verification: `npx tsc --noEmit` clean; `npx expo lint` clean (exit 0); `npx jest` 27 suites / 184 tests passing.
 
 ## Findings
 
 ### Critical (0)
 
-### High (0)
+### High (1)
+- **src/features/preferences/domain/usecases/LoadPreferences.ts:37** — When the preference read fails or times out, the app runs on `DEFAULT_PREFERENCES`. The next preference change then saves the full default set over the stored values, so the untouched setting is silently reset in storage. Example: stored `{theme:'dark', language:'es'}`, `getItem` throws, state becomes `{system, system}`, the user switches theme to light, and storage now holds `{light, system}` (language lost). *(correctness)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `updatePreferences` now sends only the changed fields to the new `SavePreferences` use case. It re-reads storage and merges the change into what is stored, never into in-memory state (`SavePreferences.ts:32-41`). If storage still cannot be read, nothing is written and the error is returned (`:35-38`). Saves are queued, so two quick changes cannot read the same snapshot and drop each other's field. Tests cover this: "writes nothing ... when storage cannot be read", "merges the change into what storage holds" and "keeps both of two concurrent changes". In the original example, the stored language now survives. Original advice: The fallback is right for display but wrong for persistence. Fix either by recording that the load did not succeed (for example `loaded: false` in the slice) and re-reading storage, or refusing to save until a load has succeeded, or merging with the stored value at save time. Add a test: load fails, then update, then assert the stored language is unchanged.
 
 ### Medium (1)
-- **.github/workflows/code-review-pr.yml:44** — The PR score is computed from `.code-reviews/ledger.jsonl` as checked out from the PR head. The PR author fully controls that file, so they can hand-edit or append a ledger line (e.g. `"score":100,"status":"pass"` for an unreviewed or `--no-verify` commit). The workflow then reports PASS. Nothing in the job checks that a ledger entry was produced by the hooks. *(security)*
-  - status: open
+- **src/core/http/normalizeHttpError.ts:74** — `cause: error` keeps the raw AxiosError. Its `config.params` holds query-string credentials when an API uses `ApiKeyAuth` with `location: 'query'` (`interceptors.ts` `authorize` writes them into `config.params`). `ApiError` documents that its `url` never carries query parameters, but the `cause` chain does, and `redact()` deliberately skips Error objects. Any `logger.error(message, apiError)` call, or a future crash-reporting transport that serialises `cause`, would expose the key. *(security)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: The score is self-attested, so it should not be used as a merge gate as-is. Options: compute the score from the base branch's ledger plus only the hook-generated `chore(code-review):` commits; or verify each entry against its `records/<sha>.md` file and the diff hash; or treat the comment as informational and say so in its text. At minimum, document in the workflow that the ledger is author-controlled.
+  - ai_reasoning: Fixed. `sanitizedCause()` (`normalizeHttpError.ts:48-53`) builds a fresh `Error` that keeps only `name`, `message`, `code` and `stack`. Both axios paths (cancel and `isAxiosError`) now use it, so `config`, `request` and `response` are no longer reachable from `cause`. Axios messages do not include the URL. The new test "never carries query-string credentials through the cause chain" asserts this. The non-axios fallback still keeps the raw error, which is correct because it has no axios config. Original note: Latent today: no production API uses a query-string key, and no current call site logs an ApiError through `logger.error`. Fix by not keeping the AxiosError as `cause`; attach a sanitised copy (`{ message, code, status }`) or strip `config` before attaching. Add a test that no serialisation of the resulting ApiError contains the query-string key value.
 
-### Low (6)
-- **src/features/preferences/presentation/state/preferencesSlice.ts:68** — The `loadPreferences.rejected` and `updatePreferences.rejected` (line 76) handlers recover the UI state but never report the error. If a repository implementation throws instead of returning `err(...)` (a contract violation), the exception is silently dropped. *(maintainability)*
-  - status: open
+### Low (5)
+- **src/core/utils/redact.ts:3** — `pass(word)?` matches any key containing "pass", so in a travel app keys such as `passengers` or `passengerCount` are masked in logs. This is over-redaction: it hides diagnostic data but does not weaken safety. *(maintainability)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: This can't happen with the current `StoragePreferencesRepository`, which catches every storage call, so it is low risk. Wrap the repository call in each thunk with try/catch and `extra.logger.error(...)`, then return defaults or `rejectWithValue('storage')`, so a future implementation that throws is visible.
+  - ai_reasoning: Fixed. The pattern now lists `passw(or)?d|passcode|passphrase|passport` instead of `pass(word)?`, so `passengers` and `passengerCount` pass through. `passport` stays masked on purpose because it is PII. `redact.test.ts:20-36` asserts both. Original advice: Match whole key names (for example `password`, `passcode`, `passwd`) instead of substrings, or add a test that `passengers` is not redacted.
 
-- **src/bootstrap/createAppContainer.ts:20** — `new ConsoleLogger(__DEV__)` disables logging in release builds, so every `logger.error` and `logger.warn` is a no-op in production. Storage failures and render errors caught by the root ErrorBoundary leave no trace until a crash-reporting logger is wired in. *(maintainability)*
-  - status: skipped
-  - dev_reasoning: Deferred by design. Release logging lands with the Sentry-backed Logger (README roadmap Feature 8), which needs a Sentry project/DSN; the Logger port means that is a one-line swap at the composition root. No release build ships before then.
-  - ai_reasoning: Intentional and documented: the Logger port exists so Sentry can be swapped in, and the README roadmap lists observability as Feature 8. Low until a release build ships. Resolve by adding the Sentry-backed Logger, or skip with that reason.
-
-- **src/bootstrap/PreferencesGate.tsx:30** — Rendering is gated on `loadPreferences` settling, and the splash screen is hidden only after that. There is no timeout. If the storage read never resolves (e.g. a hung native module), the app stays on the splash screen indefinitely. *(correctness)*
+- **src/bootstrap/coreFactories.ts:27** — Production builds get no logging transport (`c.config.isDev ? [new ConsoleTransport()] : []`), so every `logger.warn` and `logger.error` is dropped in release, including the Inter font failure and HTTP failures. The choice is deliberate and commented, but release errors are invisible until a crash reporter exists. *(maintainability)*
   - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: Very unlikely with AsyncStorage, but the failure is total when it happens. Fix: race the repository read against a short timeout (e.g. 2–3 s) and fall back to defaults with a logged warning.
+  - dev_reasoning: Fixed in code. `ConsoleTransport` is now wired in every build (`transports: [new ConsoleTransport()]`), with `minLevel: 'warn'` in release. No babel console-stripping plugin is configured, so in release React Native forwards `console.warn`/`console.error` to the native device log (os_log on iOS, logcat on Android); warnings and errors are no longer dropped. Sentry will be added to the transports list alongside it. New test `src/bootstrap/coreFactories.test.ts` builds the release container (`createAppConfig(false)`) and asserts warn/error reach the console while debug/info are filtered. `docs/ARCHITECTURE.md` and `README.md` updated to match.
+  - ai_reasoning: Still open on re-review: `coreFactories.ts` was not changed after the first review, and line 27 still gives release builds no transport. This is the same point as the previous review's skipped Low finding, and it still applies to this diff. Either wire the planned Sentry transport before the first release build, or skip with that reason.
 
-- **src/features/explore/presentation/screens/ExploreScreen.tsx:18** — The greeting period is computed only at render. Mobile apps often stay mounted in memory for hours, so after resuming from the background the screen can show "Good morning" in the evening until something re-renders it. *(correctness)*
-  - status: open
+- **src/app/(tabs)/settings/design-system.tsx:3** — The `__DEV__` check only redirects. The `DesignSystemScreen` import is static, so the whole dev catalogue (including third-party image URLs) stays in the production bundle, and the route remains reachable by deep link. *(consistency)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Recompute when the app returns to the foreground (`AppState` 'active' listener with cleanup), or when the screen regains focus (`useFocusEffect`).
+  - ai_reasoning: Fixed. The route now keeps only a type-only import and loads the screen with `require` inside a `__DEV__ ? ... : null` ternary (`design-system.tsx:11-15`). Metro inlines `__DEV__` and constant-folds in production transforms before collecting dependencies, so the catalogue module is dropped from release bundles. The deep link still resolves but only redirects to Settings. Original note: Not a security hole, since the screen renders nothing sensitive and redirects in release, but it ships dead code. Load the module only inside the dev branch (for example `require` it inside the `__DEV__` path) so the bundler can drop it, or exclude the file from release builds.
 
-- **app.json:41** — The light splash `backgroundColor` is `#FFFFFF`, but the app's light background is `#F6F8F8`, so there is a visible colour jump when the splash hides. The dark splash colour `#0B1416` matches. *(consistency)*
-  - status: open
+- **src/features/design-system/presentation/screens/DesignSystemScreen.tsx:136** — `setTimeout(() => setLoading(false), 1500)` is never cleared, so it can set state after the screen unmounts. This is harmless in React 19 but untidy. *(correctness)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Set the light splash background to `#F6F8F8` to match `themes.light.colors.background`.
+  - ai_reasoning: Fixed. The press handler now only sets `loading`. A `useEffect` keyed on `loading` starts the 1.5 s timer and returns `clearTimeout`, so the timer is cleared on unmount (`DesignSystemScreen.tsx:88-92`). The finding's line number has shifted. Original advice: Keep the timer id in a ref and clear it on unmount, or drive the timeout from an effect that returns a cleanup function.
 
-- **.github/workflows/code-review-pr.yml:92** — The existing score comment is found by its body marker alone, with no author filter. Any PR participant can post a comment starting with `<!-- brainx-code-review-score -->`. The job then tries to PATCH a comment it doesn't own, gets a 403, and fails under `set -e`, so the score comment stops updating. Separately, line 22 uses `actions/checkout@v4` by mutable tag rather than a commit SHA while the job holds a `pull-requests: write` token. *(security)*
-  - status: open
+- **src/shared/ui/AppHeader.tsx:6** — Imports the static `spacing` token instead of `useAppTheme().spacing`. Every other shared component in this diff reads spacing from the theme, so the header would not pick up a theme-level change. The component already calls `useAppTheme` for colours and sizes. *(consistency)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Add `and .user.login == "github-actions[bot]"` (or `.user.type == "Bot"`) to the jq select. Pin `actions/checkout` to a full commit SHA with a version comment.
+  - ai_reasoning: Fixed. The static `spacing` import is gone. `AppHeader` now destructures `spacing` from `useAppTheme()` with `colors` and `sizes` (`AppHeader.tsx:51`) and uses it at every spacing site. Original advice: Read `spacing` from the `useAppTheme()` result that the component already destructures for `colors` and `sizes`.
 
 ## Reviewed files
-- .github/workflows/code-review-pr.yml (reviewed)
-- README.md (reviewed)
-- app.json (reviewed)
-- eslint.config.js (reviewed)
-- jest.setup.ts (reviewed)
-- package.json (reviewed)
-- package-lock.json (skimmed: generated; checked added dependency pins only)
-- tsconfig.json (reviewed)
-- src/app/_layout.tsx (reviewed)
-- src/app/index.tsx (reviewed: deletion; `/` now resolves to `(tabs)/(explore)/index`, confirmed on the iOS simulator)
-- src/app/(tabs)/_layout.tsx (reviewed)
-- src/app/(tabs)/(explore)/_layout.tsx (reviewed)
-- src/app/(tabs)/(explore)/index.tsx (reviewed)
-- src/app/(tabs)/settings/_layout.tsx (reviewed)
-- src/app/(tabs)/settings/index.tsx (reviewed)
-- src/bootstrap/AppProviders.tsx (reviewed)
-- src/bootstrap/PreferencesGate.tsx (reviewed)
-- src/bootstrap/PreferencesGate.test.tsx (reviewed)
-- src/bootstrap/createAppContainer.ts (reviewed)
-- src/core/di/AppDependencies.ts (reviewed)
-- src/core/errors/AppError.ts (reviewed)
-- src/core/i18n/createI18n.ts (reviewed)
-- src/core/i18n/i18next.d.ts (reviewed)
-- src/core/i18n/languages.ts (reviewed)
-- src/core/i18n/locales/en.ts (reviewed)
-- src/core/i18n/locales/es.ts (reviewed)
-- src/core/logging/Logger.ts (reviewed)
-- src/core/result.ts (reviewed)
-- src/core/storage/AsyncStorageKeyValueStore.ts (reviewed)
-- src/core/storage/AsyncStorageKeyValueStore.test.ts (reviewed)
-- src/core/storage/KeyValueStore.ts (reviewed)
-- src/core/store/hooks.ts (reviewed)
-- src/core/store/store.ts (reviewed)
-- src/core/theme/ThemeProvider.tsx (reviewed)
-- src/core/theme/themes.ts (reviewed)
-- src/core/theme/tokens.ts (reviewed)
-- src/core/theme/types.ts (reviewed)
-- src/features/explore/domain/dayPeriod.ts (reviewed)
-- src/features/explore/domain/dayPeriod.test.ts (reviewed)
-- src/features/explore/presentation/screens/ExploreScreen.tsx (reviewed)
-- src/features/explore/presentation/screens/ExploreScreen.test.tsx (reviewed)
-- src/features/preferences/data/StoragePreferencesRepository.ts (reviewed)
-- src/features/preferences/data/StoragePreferencesRepository.test.ts (reviewed)
-- src/features/preferences/domain/Preferences.ts (reviewed)
-- src/features/preferences/domain/PreferencesRepository.ts (reviewed)
-- src/features/preferences/domain/resolvePreferences.ts (reviewed)
-- src/features/preferences/domain/resolvePreferences.test.ts (reviewed)
-- src/features/preferences/presentation/applyNativeColorScheme.ts (reviewed)
-- src/features/preferences/presentation/hooks/usePreferenceSettings.ts (reviewed)
-- src/features/preferences/presentation/hooks/useResolvedPreferences.ts (reviewed)
-- src/features/preferences/presentation/screens/SettingsScreen.tsx (reviewed)
-- src/features/preferences/presentation/screens/SettingsScreen.test.tsx (reviewed)
-- src/features/preferences/presentation/state/preferencesSlice.ts (reviewed)
-- src/features/preferences/presentation/state/preferencesSlice.test.ts (reviewed)
-- src/features/preferences/presentation/state/selectors.ts (reviewed)
-- src/shared/ui/AppText.tsx (reviewed)
-- src/shared/ui/InlineMessage.tsx (reviewed)
-- src/shared/ui/OptionGroup.tsx (reviewed)
-- src/shared/ui/Screen.tsx (reviewed)
-- src/testing/InMemoryKeyValueStore.ts (reviewed)
-- src/testing/renderWithProviders.tsx (reviewed)
-- src/testing/testDependencies.ts (reviewed)
+- .code-reviews/brainx-review.md (deletion of previous review file; not a code change, not reviewed)
+- .prettierignore
+- .prettierrc.json
+- README.md (skimmed)
+- app.json
+- docs/ARCHITECTURE.md (skimmed)
+- eslint.config.js
+- package-lock.json (skipped: lockfile; only package.json dependency changes were checked)
+- package.json
+- src/app/(tabs)/_layout.tsx
+- src/app/(tabs)/settings/_layout.tsx
+- src/app/(tabs)/settings/design-system.tsx
+- src/app/_layout.tsx
+- src/bootstrap/AppProviders.tsx
+- src/bootstrap/coreFactories.ts
+- src/bootstrap/createAppContainer.test.ts
+- src/bootstrap/createAppContainer.ts
+- src/core/config/appConfig.ts
+- src/core/di/AppDependencies.ts
+- src/core/di/CoreDependencies.ts
+- src/core/di/DependenciesProvider.tsx
+- src/core/di/createContainer.test.ts
+- src/core/di/createContainer.ts
+- src/core/errors/AppError.ts
+- src/core/errors/errorMessages.ts
+- src/core/events/Subject.test.ts
+- src/core/events/Subject.ts
+- src/core/http/ApiError.ts
+- src/core/http/AxiosHttpClient.test.ts
+- src/core/http/AxiosHttpClient.ts
+- src/core/http/HttpClient.ts
+- src/core/http/HttpClientFactory.ts
+- src/core/http/index.ts
+- src/core/http/interceptors.ts
+- src/core/http/normalizeHttpError.test.ts
+- src/core/http/normalizeHttpError.ts
+- src/core/http/strategies/AuthStrategy.ts
+- src/core/http/strategies/RetryStrategy.ts
+- src/core/http/strategies/strategies.test.ts
+- src/core/i18n/locales/en.ts
+- src/core/i18n/locales/es.ts
+- src/core/logging/Logger.test.ts
+- src/core/logging/Logger.ts
+- src/core/network/ConnectivityService.ts
+- src/core/network/ExpoNetworkConnectivityService.test.ts
+- src/core/network/ExpoNetworkConnectivityService.ts
+- src/core/store/store.ts
+- src/core/theme/ThemeProvider.tsx
+- src/core/theme/colors.ts
+- src/core/theme/fonts.ts
+- src/core/theme/shadows.ts
+- src/core/theme/themes.ts
+- src/core/theme/tokens.ts
+- src/core/theme/types.ts
+- src/core/usecase/UseCase.ts
+- src/core/utils/Clock.ts
+- src/core/utils/IdGenerator.ts
+- src/core/utils/async.test.ts
+- src/core/utils/async.ts
+- src/core/utils/redact.test.ts
+- src/core/utils/redact.ts
+- src/features/design-system/presentation/screens/DesignSystemScreen.tsx
+- src/features/preferences/data/StoragePreferencesRepository.ts
+- src/features/preferences/di.ts
+- src/features/preferences/domain/resolvePreferences.ts
+- src/features/preferences/domain/usecases/LoadPreferences.test.ts
+- src/features/preferences/domain/usecases/LoadPreferences.ts
+- src/features/preferences/domain/usecases/SavePreferences.test.ts
+- src/features/preferences/domain/usecases/SavePreferences.ts
+- src/features/preferences/presentation/hooks/usePreferenceSettings.ts
+- src/features/preferences/presentation/screens/SettingsScreen.test.tsx
+- src/features/preferences/presentation/screens/SettingsScreen.tsx
+- src/features/preferences/presentation/state/preferencesSlice.test.ts
+- src/features/preferences/presentation/state/preferencesSlice.ts
+- src/shared/hooks/useConnectivity.test.tsx
+- src/shared/hooks/useConnectivity.ts
+- src/shared/hooks/useReduceMotion.ts
+- src/shared/ui/AppAvatar.tsx
+- src/shared/ui/AppBadge.tsx
+- src/shared/ui/AppBottomSheet.test.tsx
+- src/shared/ui/AppBottomSheet.tsx
+- src/shared/ui/AppButton.test.tsx
+- src/shared/ui/AppButton.tsx
+- src/shared/ui/AppCard.tsx
+- src/shared/ui/AppDivider.tsx
+- src/shared/ui/AppEmptyView.tsx
+- src/shared/ui/AppErrorView.tsx
+- src/shared/ui/AppHeader.tsx
+- src/shared/ui/AppIcon.tsx
+- src/shared/ui/AppIconButton.tsx
+- src/shared/ui/AppInput.test.tsx
+- src/shared/ui/AppInput.tsx
+- src/shared/ui/AppLoader.tsx
+- src/shared/ui/AppText.tsx
+- src/shared/ui/InlineMessage.tsx
+- src/shared/ui/OptionGroup.tsx
+- src/shared/ui/StateView.tsx
+- src/shared/ui/StateViews.test.tsx
+- src/shared/ui/getInitials.test.ts
+- src/shared/ui/getInitials.ts
+- src/shared/ui/icons.ts
+- src/shared/ui/index.ts
+- src/testing/FakeConnectivityService.ts
+- src/testing/FakeHttpClient.ts
+- src/testing/ManualClock.ts
+- src/testing/MockPreferencesRepository.ts
+- src/testing/examples/networkFeature.example.test.ts
+- src/testing/mockAxiosAdapter.ts
+- src/testing/renderWithProviders.tsx
+- src/testing/testDependencies.ts
+- tsconfig.json

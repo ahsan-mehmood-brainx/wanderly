@@ -26,7 +26,10 @@ export function usePreferenceSettings(): PreferenceSettings {
   const saveError = useAppSelector(selectPreferencesSaveError);
   const { deviceLanguage } = useResolvedPreferences();
 
-  const setTheme = useCallback((value: ThemePreference) => void dispatch(updatePreferences({ theme: value })), [dispatch]);
+  const setTheme = useCallback(
+    (value: ThemePreference) => void dispatch(updatePreferences({ theme: value })),
+    [dispatch],
+  );
   const setLanguage = useCallback(
     (value: LanguagePreference) => void dispatch(updatePreferences({ language: value })),
     [dispatch],

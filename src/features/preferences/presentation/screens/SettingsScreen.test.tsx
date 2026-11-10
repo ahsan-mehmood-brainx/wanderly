@@ -26,9 +26,7 @@ describe('SettingsScreen', () => {
 
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'System' })).not.toBeChecked();
-    await expect(dependencies.preferencesRepository.load()).resolves.toEqual(
-      ok({ theme: 'dark', language: 'system' }),
-    );
+    await expect(dependencies.preferencesRepository.load()).resolves.toEqual(ok({ theme: 'dark', language: 'system' }));
   });
 
   it('switches the interface language immediately', async () => {

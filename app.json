@@ -7,16 +7,18 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wanderly.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F7F8F5",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.wanderly.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -26,10 +28,7 @@
       [
         "expo-localization",
         {
-          "supportedLocales": [
-            "en",
-            "es"
-          ]
+          "supportedLocales": ["en", "es"]
         }
       ],
       [
@@ -38,10 +37,10 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#F6F8F8",
+          "backgroundColor": "#F7F8F5",
           "dark": {
             "image": "./assets/splash-icon.png",
-            "backgroundColor": "#0B1416"
+            "backgroundColor": "#0F1513"
           }
         }
       ]

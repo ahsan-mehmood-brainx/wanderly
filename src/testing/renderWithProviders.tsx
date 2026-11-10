@@ -22,7 +22,7 @@ export async function renderWithProviders(ui: ReactElement, options: RenderOptio
   const i18n = createI18n(options.initialLanguage ?? 'en');
 
   await render(
-    <AppProviders container={{ store, i18n }} onReady={options.onReady}>
+    <AppProviders container={{ dependencies, store, i18n }} onReady={options.onReady}>
       {ui}
     </AppProviders>,
   );

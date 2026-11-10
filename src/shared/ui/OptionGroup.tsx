@@ -24,7 +24,12 @@ export function OptionGroup<T extends string>({ title, options, value, onChange 
 
   return (
     <View style={{ gap: spacing.sm }}>
-      <AppText variant="sectionTitle" color="textSecondary" accessibilityRole="header" style={{ paddingHorizontal: spacing.xs }}>
+      <AppText
+        variant="sectionTitle"
+        color="textSecondary"
+        accessibilityRole="header"
+        style={{ paddingHorizontal: spacing.xs }}
+      >
         {title}
       </AppText>
       <View

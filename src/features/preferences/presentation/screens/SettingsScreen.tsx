@@ -1,10 +1,11 @@
+import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { StyleSheet, View } from 'react-native';
 
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '@/core/i18n/languages';
-import { InlineMessage } from '@/shared/ui/InlineMessage';
-import { OptionGroup, type Option } from '@/shared/ui/OptionGroup';
-import { Screen } from '@/shared/ui/Screen';
+import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { AppCard, AppIcon, AppText, InlineMessage, OptionGroup, Screen, type Option } from '@/shared/ui';
 
 import { THEME_PREFERENCES, type LanguagePreference, type ThemePreference } from '../../domain/Preferences';
 import { usePreferenceSettings } from '../hooks/usePreferenceSettings';
@@ -39,10 +40,56 @@ export function SettingsScreen() {
   return (
     <Screen>
       {saveError ? (
-        <InlineMessage message={t('settings.saveError')} dismissLabel={t('common.dismiss')} onDismiss={dismissSaveError} />
+        <InlineMessage
+          message={t('settings.saveError')}
+          dismissLabel={t('common.dismiss')}
+          onDismiss={dismissSaveError}
+        />
       ) : null}
       <OptionGroup title={t('settings.appearance.title')} options={themeOptions} value={theme} onChange={setTheme} />
-      <OptionGroup title={t('settings.language.title')} options={languageOptions} value={language} onChange={setLanguage} />
+      <OptionGroup
+        title={t('settings.language.title')}
+        options={languageOptions}
+        value={language}
+        onChange={setLanguage}
+      />
+      {__DEV__ ? <DeveloperSection /> : null}
     </Screen>
   );
 }
+
+/** Dev-build-only tools. Stripped from production bundles by the `__DEV__` check. */
+function DeveloperSection() {
+  const { t } = useTranslation();
+  const { spacing } = useAppTheme();
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <AppText
+        variant="sectionTitle"
+        color="textSecondary"
+        accessibilityRole="header"
+        style={{ paddingHorizontal: spacing.xs }}
+      >
+        {t('settings.developer.title')}
+      </AppText>
+      <AppCard
+        variant="outlined"
+        padding="lg"
+        accessibilityLabel={t('settings.developer.designSystem')}
+        onPress={() => router.push('/settings/design-system')}
+      >
+        <View style={[styles.row, { gap: spacing.md }]}>
+          <AppIcon name="settings" size="md" color="primary" />
+          <AppText style={styles.fill}>{t('settings.developer.designSystem')}</AppText>
+          <AppIcon name="chevronRight" size="sm" color="textTertiary" />
+        </View>
+      </AppCard>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center' },
+  fill: { flex: 1 },
+});

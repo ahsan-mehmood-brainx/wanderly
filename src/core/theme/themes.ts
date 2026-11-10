@@ -1,4 +1,6 @@
-import { radii, spacing, typography } from './tokens';
+import { colorSchemes } from './colors';
+import { shadowsFor, type ThemeShadows } from './shadows';
+import { motion, opacity, radii, sizes, spacing, typography } from './tokens';
 import { type ColorScheme, type ThemeColors } from './types';
 
 export interface AppTheme {
@@ -7,36 +9,28 @@ export interface AppTheme {
   readonly spacing: typeof spacing;
   readonly radii: typeof radii;
   readonly typography: typeof typography;
+  readonly shadows: ThemeShadows;
+  readonly sizes: typeof sizes;
+  readonly motion: typeof motion;
+  readonly opacity: typeof opacity;
 }
 
-// Text/background pairs meet WCAG AA (≥ 4.5:1) for body text in both schemes.
-const lightColors: ThemeColors = {
-  background: '#F6F8F8',
-  surface: '#FFFFFF',
-  surfaceMuted: '#EEF2F2',
-  text: '#0F1B1D',
-  textSecondary: '#52606A',
-  border: '#D9E1E2',
-  primary: '#0B7A75',
-  onPrimary: '#FFFFFF',
-  danger: '#B42318',
-  dangerSurface: '#FEF3F2',
-};
-
-const darkColors: ThemeColors = {
-  background: '#0B1416',
-  surface: '#142123',
-  surfaceMuted: '#1C2C2F',
-  text: '#EAF2F2',
-  textSecondary: '#A3B3B6',
-  border: '#2A3B3E',
-  primary: '#4FD1C5',
-  onPrimary: '#062B28',
-  danger: '#F97066',
-  dangerSurface: '#3A1714',
-};
+function createTheme(scheme: ColorScheme): AppTheme {
+  const colors = colorSchemes[scheme];
+  return {
+    scheme,
+    colors,
+    spacing,
+    radii,
+    typography,
+    shadows: shadowsFor(scheme, colors.shadow),
+    sizes,
+    motion,
+    opacity,
+  };
+}
 
 export const themes: Readonly<Record<ColorScheme, AppTheme>> = {
-  light: { scheme: 'light', colors: lightColors, spacing, radii, typography },
-  dark: { scheme: 'dark', colors: darkColors, spacing, radii, typography },
+  light: createTheme('light'),
+  dark: createTheme('dark'),
 };

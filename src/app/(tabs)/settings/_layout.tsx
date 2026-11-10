@@ -6,6 +6,7 @@ export default function SettingsStackLayout() {
   return (
     <Stack screenOptions={{ headerLargeTitle: true, headerShadowVisible: false }}>
       <Stack.Screen name="index" options={{ title: t('settings.title') }} />
+      <Stack.Screen name="design-system" options={{ title: t('settings.developer.designSystem') }} />
     </Stack>
   );
 }

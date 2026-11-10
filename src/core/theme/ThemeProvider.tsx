@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider, type
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 import { themes, type AppTheme } from './themes';
+import { FONT_FAMILY } from './tokens';
 import { type ColorScheme } from './types';
 
 const ThemeContext = createContext<AppTheme | null>(null);
@@ -10,6 +11,12 @@ function toNavigationTheme(theme: AppTheme): Theme {
   const base = theme.scheme === 'dark' ? DarkTheme : DefaultTheme;
   return {
     ...base,
+    fonts: {
+      regular: { ...base.fonts.regular, fontFamily: FONT_FAMILY },
+      medium: { ...base.fonts.medium, fontFamily: FONT_FAMILY },
+      bold: { ...base.fonts.bold, fontFamily: FONT_FAMILY },
+      heavy: { ...base.fonts.heavy, fontFamily: FONT_FAMILY },
+    },
     colors: {
       ...base.colors,
       primary: theme.colors.primary,

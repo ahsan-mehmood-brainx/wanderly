@@ -4,10 +4,7 @@ import { type ColorScheme } from '@/core/theme/types';
 import { type LanguagePreference, type ThemePreference } from './Preferences';
 
 /** Turns the user's theme choice into the scheme to render, following the OS when set to "system". */
-export function resolveColorScheme(
-  preference: ThemePreference,
-  systemScheme: string | null | undefined,
-): ColorScheme {
+export function resolveColorScheme(preference: ThemePreference, systemScheme: string | null | undefined): ColorScheme {
   if (preference !== 'system') return preference;
   return systemScheme === 'dark' ? 'dark' : 'light';
 }

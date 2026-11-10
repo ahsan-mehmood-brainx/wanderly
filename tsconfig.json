@@ -2,8 +2,13 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // Implied by `strict`; listed explicitly so they can't be switched off by accident.
+    "noImplicitAny": true,
+    "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
     "types": ["jest"],
     "paths": {
       "@/*": ["./src/*"]

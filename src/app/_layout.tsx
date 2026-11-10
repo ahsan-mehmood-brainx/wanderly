@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native'
 
 import { AppProviders } from '@/bootstrap/AppProviders';
 import { createAppContainer } from '@/bootstrap/createAppContainer';
+import { useAppFonts } from '@/core/theme/fonts';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { themes } from '@/core/theme/themes';
 import { MIN_TOUCH_TARGET } from '@/core/theme/tokens';
@@ -15,6 +16,15 @@ void SplashScreen.preventAutoHideAsync();
 const container = createAppContainer();
 
 export default function RootLayout() {
+  const fonts = useAppFonts();
+
+  useEffect(() => {
+    if (fonts.error) container.dependencies.logger.error('Inter failed to load; using the platform font', fonts.error);
+  }, [fonts.error]);
+
+  // The splash stays up until fonts are ready, then until preferences load (AppProviders.onReady).
+  if (!fonts.done) return null;
+
   return (
     <AppProviders container={container} onReady={SplashScreen.hide}>
       <RootNavigator />
@@ -60,7 +70,12 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         onPress={() => void retry()}
         style={({ pressed }) => [
           styles.button,
-          { backgroundColor: colors.primary, borderRadius: radii.pill, paddingHorizontal: spacing.xl, opacity: pressed ? 0.8 : 1 },
+          {
+            backgroundColor: colors.primary,
+            borderRadius: radii.pill,
+            paddingHorizontal: spacing.xl,
+            opacity: pressed ? 0.8 : 1,
+          },
         ]}
       >
         <Text style={[typography.headline, { color: colors.onPrimary }]}>{t('common.tryAgain')}</Text>

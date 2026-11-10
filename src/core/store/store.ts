@@ -13,8 +13,7 @@ export function createAppStore(dependencies: AppDependencies, preloadedState?: P
   return configureStore({
     reducer: rootReducer,
     preloadedState,
-    middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware({ thunk: { extraArgument: dependencies } }),
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware({ thunk: { extraArgument: dependencies } }),
   });
 }
 
