@@ -13,6 +13,6 @@ export { AppInput, type AppInputProps } from './AppInput';
 export { AppLoader, type AppLoaderProps } from './AppLoader';
 export { AppText, type AppTextProps, type TextColor } from './AppText';
 export { icons, type AppIconName } from './icons';
-export { InlineMessage } from './InlineMessage';
+export { InlineMessage, type InlineMessageTone } from './InlineMessage';
 export { OptionGroup, type Option } from './OptionGroup';
 export { Screen } from './Screen';

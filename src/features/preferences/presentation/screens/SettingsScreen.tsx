@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '@/core/i18n/languages';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { routes } from '@/shared/navigation/routes';
 import { AppCard, AppIcon, AppText, InlineMessage, OptionGroup, Screen, type Option } from '@/shared/ui';
 
 import { THEME_PREFERENCES, type LanguagePreference, type ThemePreference } from '../../domain/Preferences';
@@ -77,7 +78,7 @@ function DeveloperSection() {
         variant="outlined"
         padding="lg"
         accessibilityLabel={t('settings.developer.designSystem')}
-        onPress={() => router.push('/settings/design-system')}
+        onPress={() => router.push(routes.designSystem)}
       >
         <View style={[styles.row, { gap: spacing.md }]}>
           <AppIcon name="settings" size="md" color="primary" />

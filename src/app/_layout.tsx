@@ -1,19 +1,22 @@
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
 import { AppProviders } from '@/bootstrap/AppProviders';
 import { createAppContainer } from '@/bootstrap/createAppContainer';
+import { RootNavigator } from '@/bootstrap/RootNavigator';
 import { useAppFonts } from '@/core/theme/fonts';
-import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { themes } from '@/core/theme/themes';
 import { MIN_TOUCH_TARGET } from '@/core/theme/tokens';
+import { deepLinkInbox } from '@/shared/navigation/deepLinks';
 
 void SplashScreen.preventAutoHideAsync();
 
 const container = createAppContainer();
+
+// Native links reach the inbox through `+native-intent`, which doesn't run on web; there, the page URL is the link.
+if (Platform.OS === 'web' && typeof window !== 'undefined') deepLinkInbox.record(window.location.pathname);
 
 export default function RootLayout() {
   const fonts = useAppFonts();
@@ -23,24 +26,13 @@ export default function RootLayout() {
   }, [fonts.error]);
 
   // The splash stays up until fonts are ready, then until preferences load (AppProviders.onReady).
+  // The in-app launch screen (`splash` route) then continues it while the session is restored.
   if (!fonts.done) return null;
 
   return (
     <AppProviders container={container} onReady={SplashScreen.hide}>
       <RootNavigator />
     </AppProviders>
-  );
-}
-
-function RootNavigator() {
-  const { scheme } = useAppTheme();
-  return (
-    <>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </>
   );
 }
 

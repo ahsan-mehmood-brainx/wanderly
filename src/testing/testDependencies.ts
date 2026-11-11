@@ -3,6 +3,8 @@ import { type AppDependencies } from '@/core/di/AppDependencies';
 import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { createContainer, type Factories, valueFactories } from '@/core/di/createContainer';
 import { type LogContext, type Logger } from '@/core/logging/Logger';
+import { authFactories } from '@/features/auth/di';
+import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
 
 import { FakeConnectivityService } from './FakeConnectivityService';
@@ -30,6 +32,7 @@ export function testCoreFactories(): Factories<CoreDependencies> {
     clock: () => new ManualClock(),
     idGenerator: () => sequentialIds(),
     keyValueStore: () => new InMemoryKeyValueStore(),
+    secureStore: () => new InMemoryKeyValueStore(),
     connectivity: () => new FakeConnectivityService(),
     httpClientFactory: () => new FakeHttpClientFactory(),
   };
@@ -44,6 +47,8 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
   return createContainer<AppDependencies>({
     ...testCoreFactories(),
     ...preferencesFactories,
+    ...onboardingFactories,
+    ...authFactories,
     ...valueFactories(overrides),
   });
 }

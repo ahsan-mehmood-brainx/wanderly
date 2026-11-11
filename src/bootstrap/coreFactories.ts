@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { type AppConfig } from '@/core/config/appConfig';
 import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { type Factories } from '@/core/di/createContainer';
@@ -6,6 +8,8 @@ import { ExponentialBackoffRetry } from '@/core/http/strategies/RetryStrategy';
 import { AppLogger, ConsoleTransport } from '@/core/logging/Logger';
 import { ExpoNetworkConnectivityService } from '@/core/network/ExpoNetworkConnectivityService';
 import { AsyncStorageKeyValueStore } from '@/core/storage/AsyncStorageKeyValueStore';
+import { ExpoSecureKeyValueStore } from '@/core/storage/ExpoSecureKeyValueStore';
+import { MemorySecureKeyValueStore } from '@/core/storage/MemorySecureKeyValueStore';
 import { systemClock } from '@/core/utils/Clock';
 import { randomId } from '@/core/utils/IdGenerator';
 
@@ -31,6 +35,8 @@ export function createCoreFactories({ config, getLanguage }: CoreFactoryOptions)
         clock: c.clock,
       }),
     keyValueStore: () => new AsyncStorageKeyValueStore(),
+    // SecureStore has no web implementation; web keeps secrets in memory rather than in plain localStorage.
+    secureStore: () => (Platform.OS === 'web' ? new MemorySecureKeyValueStore() : new ExpoSecureKeyValueStore()),
     connectivity: (c) => new ExpoNetworkConnectivityService(c.logger.child({ scope: 'connectivity' })),
     httpClientFactory: (c) =>
       new AxiosHttpClientFactory({

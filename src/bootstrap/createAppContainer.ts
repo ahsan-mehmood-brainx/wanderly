@@ -6,6 +6,8 @@ import { type AppDependencies } from '@/core/di/AppDependencies';
 import { createContainer } from '@/core/di/createContainer';
 import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore, type AppStore } from '@/core/store/store';
+import { authFactories } from '@/features/auth/di';
+import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
 
@@ -33,6 +35,8 @@ export function createAppContainer(): AppContainer {
   const dependencies = createContainer<AppDependencies>({
     ...createCoreFactories({ config: createAppConfig(), getLanguage: () => i18n.language }),
     ...preferencesFactories,
+    ...onboardingFactories,
+    ...authFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

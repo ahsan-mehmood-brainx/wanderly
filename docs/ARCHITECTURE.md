@@ -271,3 +271,56 @@ What to test at each layer:
 4. **Presentation:** thunks call `extra.useCase.execute({ …, signal })`, and screens use a view-model hook. Render loading/empty/error states with `AppErrorView errorKind`.
 5. **Tests:** use case with a mock repository, repository with `FakeHttpClient`, screen with `renderWithProviders`.
 6. **README:** add the API to "Third-party data and attribution".
+
+## 10. Navigation and authentication
+
+### Route tree
+
+```
+src/app/
+  _layout.tsx            providers + RootNavigator (bootstrap/RootNavigator.tsx)
+  +native-intent.tsx     records every incoming native link in the DeepLinkInbox
+  +not-found.tsx
+  splash.tsx             launch screen while the session is restored       (phase: splash)
+  onboarding.tsx         three intro pages                                 (phase: onboarding)
+  (auth)/                Stack: sign-in, register                          (phase: auth)
+  (app)/_layout.tsx      Drawer: custom content, swipe only on root screens (phase: app)
+    (tabs)/_layout.tsx   NativeTabs: (home) · (explore) · trips · budget · profile, each a Stack
+    saved/               drawer-only destination (Saved Places)
+```
+
+### Protected navigation
+
+`selectAppPhase` (`bootstrap/appPhase.ts`) reduces auth status and the onboarding flag to one phase: `splash` → `onboarding` (first run) → `auth` → `app`. A restored session skips onboarding. `RootNavigator` opens exactly one `Stack.Protected` guard per phase. Every guard has `redirectTo` set to the current phase's entry route, because without it a group with no index (`(auth)`) resolves to not-found. No screen navigates to or from sign-in by hand. Signing in, signing out and session expiry only change state, and the guards move the user.
+
+### Session model
+
+| Piece                             | Responsibility                                                                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DummyJsonAuthRepository`         | login, refresh, `/auth/me`, demo sign-up. Maps 400/401 at login to `invalidCredentials` and a refused refresh to `sessionExpired`.                                        |
+| `SecureSessionRepository`         | Session JSON in SecureStore (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`). A plain-storage marker discards Keychain sessions left behind by a previous install.                      |
+| `SessionManager` (domain service) | Holds tokens in memory. `getValidAccessToken()` renews expired tokens with a single in-flight refresh. A refused renewal ends the session and emits `onExpired`.          |
+| Use cases                         | `SignIn` (with `LoginAttemptLimiter`: 5 wrong passwords → 30 s pause), `SignOut`, `RestoreSession`, `FetchCurrentUser` (401 → renew once → retry), `RegisterDemoAccount`. |
+| `authSlice`                       | Status, user, notice (`sessionExpired` / `restoreFailed` / `signedOut`), sign-in/profile/registration UI state. Never tokens.                                             |
+
+The authorized HTTP client reads the token through `BearerTokenAuth(() => sessionManager.getValidAccessToken())`, a closure resolved per request, so there is no DI cycle and renewed tokens are picked up automatically. `useSessionLifecycle` restores the session at launch, turns `onExpired` into a `sessionExpired` action, and renews stale tokens when the app returns to the foreground.
+
+| Edge case                       | Behaviour                                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Missing token                   | Signed out with no notice (first run or after sign-out).                                           |
+| Expired access token            | Renewed before the request is sent, at launch, on foreground, or on a 401.                         |
+| Refresh refused                 | Session cleared everywhere and the user returns to sign-in with "Your session expired".            |
+| Offline at launch               | Session kept (the app works offline). Renewal is retried later.                                    |
+| Unreadable or hung storage      | Signed out with "We couldn't restore your session" after a 5 s cap. Corrupt entries are discarded. |
+| Invalid credentials             | Inline error. Counts towards the attempt limiter (network errors don't).                           |
+| Repeated or double submissions  | The thunk `condition` drops a second in-flight sign-in. POSTs are never retried.                   |
+| Restart during sign-in          | Nothing is persisted until login succeeds, so the app opens on sign-in.                            |
+| Refresh settling after sign-out | Discarded, so it can't resurrect the session.                                                      |
+
+### Deep links
+
+`+native-intent` records each incoming path in `deepLinkInbox` (on web, the page URL is recorded at start-up). When the phase becomes `app`, `useDeferredDeepLink` resolves the pending link through an allow-list (`resolveDeepLink`: destinations, trips, itinerary items and top-level tabs, with ids validated by `parseRouteId`) and navigates to it. The navigation waits one macrotask so the guard redirect doesn't overwrite it. While signed in, the router opens links itself.
+
+### Testing
+
+`bootstrap/RootNavigator.test.tsx` drives the real `RootNavigator`, guards, providers and auth screens with `renderRouter` (the signed-in area is a plain Stack, since the drawer and native tabs need native views). It covers onboarding, protected routes, login, validation, network errors, double submission, lockout, demo sign-up, restore, renewal, expiry, sign-out and deep-link replay. `testing/authFixtures.ts` provides `stubDummyJson`, `fakeJwt`, `testSession` and `InMemorySessionRepository`. In development builds, Profile › Session testing can expire the access token or invalidate the session on a device.

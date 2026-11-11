@@ -43,7 +43,8 @@
             "backgroundColor": "#0F1513"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "scheme": "wanderly",
     "experiments": {

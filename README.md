@@ -43,7 +43,8 @@ src/
 
 ### Key decisions
 
-- **Navigation: Expo Router.** In SDK 58, Expo Router includes React Navigation internally, so `@react-navigation/*` is not installed separately. Tabs use `expo-router/native-tabs` (native tab bars on iOS and Android). Each tab has its own Stack for native headers and nested screens.
+- **Navigation: Expo Router.** In SDK 58, Expo Router includes React Navigation internally, so `@react-navigation/*` is not installed separately. The root Stack holds four groups (launch screen, onboarding, auth, app), each behind a `Stack.Protected` guard driven by one selector (`selectAppPhase`). Signed-in users get a Drawer (`expo-router/drawer`, which needs Reanimated, Worklets and Gesture Handler) around native bottom tabs (`expo-router/native-tabs`). Each tab has its own Stack. Hrefs and route params are typed (`shared/navigation/routes.ts`). See [ARCHITECTURE.md § 10](docs/ARCHITECTURE.md#10-navigation-and-authentication).
+- **Authentication: DummyJSON demo accounts.** Tokens live only in `SessionManager` (memory) and Expo SecureStore (Keychain/Keystore), never in Redux or AsyncStorage. Redux holds the auth status, profile and UI state. Expired access tokens are renewed before requests leave. A refused renewal signs the user out with an explanation.
 - **Dependency injection.** A typed, lazy container (`core/di/createContainer.ts`). Each feature contributes factories from its `di.ts`, and `bootstrap/createAppContainer.ts` merges them. Services are container-scoped singletons. Thunks get them through `extra`, hooks through `useDependencies()`, and tests swap them with `createTestDependencies({ ...overrides })`.
 - **Use cases.** Business rules live in domain use cases (`UseCase<I, O>`). Redux thunks are thin adapters that call them.
 - **Networking.** `HttpClient` is a facade over axios, with interceptors (offline guard, language, auth), timeouts, cancellation (`AbortSignal`), retries with backoff, and zod validation. Every call returns `Result<ApiResponse<T>, ApiError>` and never throws. Clients are created per API by `HttpClientFactory`. Only `src/core/http` imports axios.
@@ -61,7 +62,7 @@ src/
 - **Shadows** use the cross-platform `boxShadow` style, so iOS and Android look the same.
 - **Icons** come from `expo-symbols`: SF Symbols on iOS and Material Symbols on Android. Use `<AppIcon name="…" />` with a name from `shared/ui/icons.ts`, and add new icons there. Both platform names are type-checked.
 - **Components:** `AppText`, `AppButton`, `AppIconButton`, `AppInput`, `AppCard`, `AppHeader`, `AppIcon`, `AppLoader`, `AppErrorView`, `AppEmptyView`, `AppBottomSheet`, `AppDivider`, `AppAvatar`, `AppBadge`. Each one is typed, themed, and accessible (roles, labels, states, 48pt touch targets), and uses native press feedback (ripple on Android, pressed tint on iOS).
-- **Showcase:** in development builds, open Settings and tap Developer › Design system to see every token and component in the current theme.
+- **Showcase:** in development builds, open Profile › Settings and tap Developer › Design system to see every token and component in the current theme.
 - **Start-up.** The native splash screen stays visible until saved preferences are loaded, so the first frame already uses the correct theme and language.
 
 ### Adding a feature
@@ -75,6 +76,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 0   | Foundation: architecture, DI, store, i18n (en/es), theming, test setup, Settings (theme and language) | Done    |
 | 0.1 | Design system: brand tokens, Inter, shared components, Prettier                                       | Done    |
 | 0.2 | Architecture: DI container, use cases, HTTP layer (axios), error model, logging, connectivity         | Done    |
+| 0.3 | Navigation and authentication: drawer + tabs, onboarding, DummyJSON sign-in, sessions, deep links     | Done    |
 | 1   | Destination discovery and search                                                                      | Planned |
 | 2   | Weather                                                                                               | Planned |
 | 3   | Nearby places and map                                                                                 | Planned |
@@ -86,4 +88,20 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 
 ## Third-party data and attribution
 
-No external APIs are used yet. When a feature adds one, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
+| API                                          | Used for                                      | Notes                                                                                                                                                                          |
+| -------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [DummyJSON](https://dummyjson.com/docs/auth) | Sign-in, token refresh, profile, demo sign-up | Public demo API, no key. Only its sample users can sign in (e.g. `emilys` / `emilyspass`). `POST /users/add` echoes new users but stores nothing, which the app says up front. |
+
+When a feature adds an API, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
+
+## Deep links
+
+The `wanderly://` scheme opens:
+
+| Link                                           | Screen         |
+| ---------------------------------------------- | -------------- |
+| `wanderly://destinations/<destinationId>`      | Destination    |
+| `wanderly://trips/<tripId>`                    | Trip           |
+| `wanderly://trips/<tripId>/itinerary/<itemId>` | Itinerary item |
+
+If the link arrives while the session is being restored or the user is signed out, it opens right after sign-in. Ids are validated, and a malformed link shows an "invalid link" screen. To try one on a simulator: `npx uri-scheme open "wanderly://trips/abc" --ios` (or `--android`). In Expo Go, use `exp://<host>:8081/--/trips/abc`. Universal/app links (`https://…`) are already parsed, but they need an associated domain configured in `app.json` before they work.

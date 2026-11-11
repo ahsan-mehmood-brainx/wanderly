@@ -14,6 +14,10 @@ export const APP_ERROR_KINDS = [
   'cancelled',
   'unauthorized',
   'forbidden',
+  /** Sign-in was rejected: the username or password is wrong. */
+  'invalidCredentials',
+  /** The session can no longer be renewed (refresh token expired or revoked); the user must sign in again. */
+  'sessionExpired',
   'notFound',
   'rateLimited',
   'badRequest',

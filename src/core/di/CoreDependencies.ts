@@ -3,6 +3,7 @@ import { type HttpClientFactory } from '@/core/http/HttpClientFactory';
 import { type Logger } from '@/core/logging/Logger';
 import { type ConnectivityService } from '@/core/network/ConnectivityService';
 import { type KeyValueStore } from '@/core/storage/KeyValueStore';
+import { type SecureKeyValueStore } from '@/core/storage/SecureKeyValueStore';
 import { type Clock } from '@/core/utils/Clock';
 import { type IdGenerator } from '@/core/utils/IdGenerator';
 
@@ -12,7 +13,10 @@ export interface CoreDependencies {
   readonly logger: Logger;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+  /** Plain storage for non-sensitive data (preferences, flags). */
   readonly keyValueStore: KeyValueStore;
+  /** Encrypted storage for secrets such as auth tokens. */
+  readonly secureStore: SecureKeyValueStore;
   readonly connectivity: ConnectivityService;
   readonly httpClientFactory: HttpClientFactory;
 }
