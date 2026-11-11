@@ -1,169 +1,145 @@
 ---
-diff_hash: 4c1ac439521ee25c7c9e9d244100e489e6814de190bd767bae8ed7a339fb8970
-reviewed_at: 2026-11-11T06:39:39Z
+diff_hash: 9d9e305e37c09236e8822fdb0c3499a08d1560f8914f2ddacc27ac88b1d30230
+reviewed_at: 2026-11-11T18:56:04Z
 
 ## Summary
 
-Feature 03, navigation and authentication. Adds a root `Stack` whose four groups (launch screen, onboarding, auth, app) are each behind a `Stack.Protected` guard driven by a single `selectAppPhase` selector, with `redirectTo` set to the current phase's entry route. Signed-in users get an `expo-router/drawer` around `expo-router/native-tabs` (Home, Explore, My Trips, Budget, Profile), each tab with its own Stack, plus a drawer-only Saved Places stack. Hrefs and route params are typed (`shared/navigation/routes.ts`). Settings moved from `/settings` to `/profile/settings`.
+Feature 1, destination discovery and search. The placeholder `explore` and `destinations` features are replaced by a `discover` feature in three layers. **Data:** a REST Countries v5 repository (API key via `EXPO_PUBLIC_RESTCOUNTRIES_API_KEY`, paged catalogue, per-object validation, demo-key and 401 mapped to a new `configuration` error kind), a Wikipedia repository (page summaries and title search, `Api-User-Agent`), in-memory TTL/LRU caching decorators with request coalescing, and AsyncStorage-backed search history and recently viewed. **Domain:** `DestinationId` (country / curated slug / base64url place ids, with a strict UTF-8 decoder), search matching and ranking, filters, editorial catalogue, and use cases for search, details, the feed (featured, trending, popular, recommendations), filter options and history. **Presentation:** an RTK Query `discoverApi` whose `queryFn`s call the use cases, a `discoverSlice` for history, and the Discover, Search and Destination screens with a filter sheet. Also: a new shared `AppChip`, new icons, a `/search` route and deep link, longer destination route ids (`parseDestinationRouteId`), en/es copy, `.env.example`, a Jest after-each hook that resets RTK Query stores, docs, and about 50 new test files.
 
-The new `auth` feature authenticates against DummyJSON. It is split into domain, data and presentation: `SessionManager` holds tokens in memory, with single-flight refresh, expiry events and a guard against races after sign-out. `SecureSessionRepository` stores the session in SecureStore (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`) with a reinstall marker. Use cases cover sign-in (with a client-side attempt limiter), sign-out, restore, fetching the current user (401 → renew → retry) and demo registration (the password is never sent). An `authSlice` holds status, profile and UI state only, never tokens. The diff also adds the `onboarding` feature (flag in AsyncStorage, three-page intro), deep links (`+native-intent` → `DeepLinkInbox` → replay after sign-in through an allow-list with id validation), placeholder screens for trips, destinations, budget and saved places, en/es copy, new icons, an `InlineMessage` tone option, a `secureStore` core port with Expo and in-memory web adapters, docs, and 102 new tests (including `renderRouter` integration tests of the real `RootNavigator`). New dependencies, added with `npx expo install`: `expo-secure-store`, `react-native-reanimated`, `react-native-worklets`, `react-native-gesture-handler`.
+Fresh review. A `brainx-review.md` existed, but it was the review for 8992404 (navigation and auth), which was committed and already finalized in the ledger by f659319. None of its findings concern this diff, and a Step 4 re-review cannot raise new findings, so this review replaces it. The developer chose to review all changes, so `git add -A` was run first. `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, the convention prior reviews in this repo used, so the hash doesn't depend on the review file itself.
 
-Fresh review: the workspace had no `brainx-review.md` (its deletion was already pending before this work). The developer chose to review all changes, so `git add -A` was run first. `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, the convention prior reviews in this repo used so the hash does not depend on the review file itself.
+Stack: React (`react` in dependencies, no NestJS marker). The runtime is React Native / Expo SDK 58, so the web-only criteria in `react.md` (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404, httpOnly cookies) were not applied. Hooks, state management (RTK / RTK Query), routing, data fetching, error handling, typing, accessibility and security criteria were.
 
-Stack: React (`react` in dependencies, no NestJS marker). The runtime is React Native / Expo, so the web-only criteria in `react.md` (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404 routes, httpOnly cookies) were not applied. Hooks, state management, routing protection, data fetching, error handling, typing, accessibility and security criteria were.
+Suspicions checked and dismissed: (1) `BearerTokenAuth` on the REST Countries client only attaches a header (`core/http/strategies/AuthStrategy.ts:40`), so a 401 there can't trigger the DummyJSON session renewal or sign-out. (2) The API key is `EXPO_PUBLIC_*` and therefore public; this is documented in `apis.ts`, `.env.example` and the README, and `.env*.local` is gitignored. (3) URLs from both APIs reach `expo-image` and `Linking.openURL` only through `toHttpsUrl` (https only). Route and deep-link ids are charset-checked (`[A-Za-z0-9_-]{1,400}`) and then parsed strictly (`parseDestinationId`, with control characters, overlong UTF-8 and surrogates rejected). (4) Search races: RTK Query keys the cache on (query, filters), and `isError` is per argument, so an old failure or response can't attach to a new query. (5) `DiscoveryHistory` read-modify-write: mutators read the live snapshot synchronously after `await load()` and queue writes, so concurrent changes don't drop each other. (6) Destination screen opened by deep link before the Explore home mounts: `recordView` awaits `load()` itself, so the disk history isn't overwritten.
 
-Suspicions checked and dismissed: (1) A duplicate `signIn` dispatch while one is in flight does not clear `pending`. A probe confirmed that RTK does not dispatch `rejected` when `condition` returns false, so the state stays `{ pending: true }` and only one request is sent. (2) The tokens never reach Redux, plain storage or logs. A test asserts this, and `redact()` masks `token` keys. (3) `DEMO_CREDENTIALS` in the bundle are DummyJSON's published sample credentials and are not a secret.
+Verified with a throwaway probe test (deleted afterwards): with a synthetic 240-country catalogue, browsing the "City" category returns 50 results ending at "Capital 048", browsing a region holding 58 countries returns 50, and `GetCuratedCollection('featured')` with both sources offline returns `ok` with cards that have no image, description, country name or flag (see findings).
 
-Skimmed, not read line by line: `README.md` and `docs/ARCHITECTURE.md` (checked for stale paths and identifiers only), `package-lock.json` (only the four `package.json` additions were checked against it), and the en/es locale files (key parity is enforced by the compiler). Not verified on a device or simulator (the dev server could not be started in this session): drawer opening from inside native tabs via `DrawerActions` bubbling, the edge-swipe and back-gesture interaction, and `KeyboardAvoidingView` placement on the Register screen under a native header.
+Skimmed, not read line by line: the ~50 test files (the suite passes; fixtures were read where probes relied on them), `editorial.ts` beyond its type and first entries (static data), the en/es locale additions (key parity is enforced by the compiler; spot-checked the strings findings refer to), and `README.md` / `docs/ARCHITECTURE.md` (checked for consistency with the code). Not verified on a device or simulator: image loading, the filter bottom sheet with the keyboard, and native-tab behaviour of the new `search` screen.
 
-Verification run before writing this review: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 37 suites / 288 tests passing. `npx expo-doctor` passed 20/20 checks.
+Verification run before writing this review: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 53 suites / 476 tests passing.
 
 Cross-repo: only one repository has staged changes.
+
+Re-review (2026-11-11T18:56:04Z): the staged diff changed since the review above. All five findings were re-evaluated against the changed lines and are fixed (details per finding). Changes since the last review also add `src/shared/navigation/openExternalUrl.ts` (+ test), touch `AppChip`, `FilterSheet`, `DestinationScreen`, `discoverFeed`, `SearchDestinations` and their tests, and add the `destination.openLinkFailed` copy. Per the re-review rules, no new findings were raised. Verification: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 54 suites / 484 tests passing.
 
 ## Findings
 
 ### Critical (0)
 
-### High (0)
+### High (1)
+- **src/features/discover/domain/usecases/SearchDestinations.ts:86** — Browse mode (empty query, active filters) silently truncates an alphabetically sorted list to `MAX_RESULTS` (50), and the screen reports the truncated count as the total ("50 destinations"). Tapping the **City** category chip on the Explore home (`routes.search({ category: 'city' })`) browses every capital (~245) plus the curated cities, so the user sees only cities from A to roughly C and has no way to page further. Region browsing loses the same tail: "Africa" (about 58 entries in REST Countries) drops the last ~8 alphabetically (e.g. Zambia and Zimbabwe), and "Europe" and "Americas" are also over 50. Confirmed with a probe: a "city" browse over 240 countries returned 50 results ending at "Capital 048", and a 58-country region returned 50. *(correctness)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `SearchDestinations.execute` now returns browse results uncapped (line 89, with a comment explaining why); `MAX_RESULTS` is applied only to ranked search (line 110), and the constant's doc comment says so. `SearchDestinations.test.ts` adds 'does not cap browsing, so the end of the alphabet is reachable': a region browse over `MAX_RESULTS + 10` countries returns all of them, ending at the last one alphabetically, and a city browse returns at least that many. 'caps ranked search results' keeps the cap covered for search.
 
-### Medium (1)
-- **src/features/auth/domain/usecases/FetchCurrentUser.ts:27** — If renewal is refused while a profile refresh is starting, the session ends correctly, but `GET /auth/me` is still sent without credentials. Its 401 then lands in `refreshProfile.rejected` (`authSlice.ts:199`), which writes `profile: { status: 'failed', error: 'unauthorized' }` into the already signed-out state. That stale status survives into the next sign-in. Confirmed with a probe on the real axios stack: a refresh answered 403 and `/auth/me` answered 401, after which the requests were `post /auth/refresh auth=none | get /auth/me auth=none` and the final state was `unauthenticated` with `profile {"status":"failed","error":"unauthorized"}`. *(correctness)*
-  - status: open
-  - dev_reasoning: Fixed. `FetchCurrentUser` now calls `getValidAccessToken()` first and returns `sessionExpired` without sending `/auth/me` when it is null (no session / renewal refused); a 401 that arrives after the session ended also maps to `sessionExpired` without a refresh. `refreshProfile.fulfilled/rejected` now ignore results when `status !== 'authenticated'`. Tests: real `AxiosHttpClientFactory` + mock adapter in `authSlice.test.ts` asserts only `post /auth/refresh` is sent and profile stays `idle` (fails on the old code); late-result reducer test; three new `FetchCurrentUser` unit tests.
-  - ai_reasoning: The path: `BearerTokenAuth` calls `getValidAccessToken()`, the refresh is refused, `expire()` runs `end()` and emits, so `sessionExpired` resets the profile. The token is then `null`, so the request leaves without an `Authorization` header and gets a 401. `FetchCurrentUser` sees `sessionManager.current === null`, so it skips the retry and returns `unauthorized`. The user-visible symptom is small: on the next sign-in, the Profile screen's first frame shows "We couldn't refresh your profile" until its mount effect dispatches `pending`. It also sends a pointless unauthenticated request. Fix both ends: in `FetchCurrentUser`, return `sessionExpired` (or skip the call) when there is no session before the request or after a 401, and in the `refreshProfile` reducers, ignore results that arrive when `state.status !== 'authenticated'`. Add a test with the real `AxiosHttpClientFactory` and a mock adapter (the probe above) asserting the profile status is `idle` after expiry.
+### Medium (2)
+- **src/features/discover/domain/usecases/discoverFeed.ts:29** — Feed failures become cached successes that are never retried. `loadCountryIndex` turns a catalogue failure into an empty map, and `enrichCurated` (lines 45–60) turns Wikipedia failures into cards with no photo or description. `GetCuratedCollection` therefore returns `ok` even when every source failed. If the app opens offline (or REST Countries/Wikipedia hiccups once), Featured and Trending render as bare placeholder cards with no country name or flag, and `SectionState` shows no error, so there's no retry. The Explore screen is a tab root that stays mounted, and nothing refetches (no `refetchOnFocus` / `refetchOnReconnect` / `setupListeners`, no pull-to-refresh), so that degraded result stays for the whole app session. Popular, by contrast, fails properly and offers retry. Confirmed with a probe: with `getAll` and `getSummary` both returning `offline`, `execute({ collection: 'featured' })` returned `ok` with `{"countryName":null,"description":null,"imageUrl":null,"flagEmoji":null,…}`. *(correctness)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `loadCountryIndex` now reports the catalogue error alongside the empty index, and `enrichCurated` reports `allFailed` when every summary failed. `GetCuratedCollection` (lines 105–116) returns an error for any retryable catalogue failure and when every summary failed, so `SectionState` shows its retry and nothing degraded is cached as a success. A missing API key (`configuration`) still degrades to cards without the country, since retrying can't fix it, and recommendations intentionally ignore `allFailed`. `discoverFeed.test.ts` covers catalogue offline, every summary failing, both offline, and the configuration case. Not done: `refetchOnReconnect` / pull-to-refresh (the ai_reasoning offered it as optional); a failed section now recovers through its retry button.
+- **src/features/discover/presentation/screens/DestinationScreen.tsx:261** — A failed Wikipedia description is cached as part of a successful details result, and the screen gives no way to retry. `describePlace` returns `ok({ status: 'failed' })` for a network or server error, so `destinationDetails` is fulfilled and RTK Query keeps it for `CACHE_SECONDS.details` (30 minutes after the screen unmounts). The About card then shows "We couldn't load the description right now." with no retry, and revisiting the destination within 30 minutes (from recents, a neighbour chip or search) serves the same cached failure. `useDestinationDetails` already returns `retry` and `refreshing`, but they're only wired to the full-screen error state. *(correctness)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `About` now takes `onRetry` / `refreshing` from `useDestinationDetails` (threaded through `CountryDetails` and `PlaceDetails`) and shows a 'Try again' button with a loading state when `description.status === 'failed'` (lines 294–304). The retry refetches the details query, which replaces the cached failure. `DestinationScreen.test.tsx` adds 'still shows the country when the description fails to load, and retries it': the summary fails with 503, then succeeds after pressing Try again, and the extract replaces the failure message.
 
 ### Low (2)
-- **src/features/auth/presentation/state/authSlice.ts:160** — The comment says "`condition` skips (a duplicate dispatch) also arrive here". That is false: Redux Toolkit does not dispatch `rejected` when `condition` returns false unless `dispatchConditionRejection: true` is set, which this thunk doesn't use. The same mistaken belief drives the `if (meta.condition)` checks on `restoreSession`, `signOut`, `refreshProfile` and `registerDemoAccount` (lines 162, 189, 200, 215) and in `onboardingSlice.ts`. Those checks are harmless no-ops, but the comment teaches the wrong model. *(maintainability)*
-  - status: open
-  - dev_reasoning: Fixed. Removed the misleading comment and the dead `meta.condition` branches in `authSlice.ts` (restoreSession, signOut, refreshProfile, registerDemoAccount) and `onboardingSlice.ts`.
-  - ai_reasoning: Verified with a probe: after a second `signIn` dispatch while the first was pending, the state was `{"pending":true,"error":null,"lockedUntil":null}`, so no `rejected` action was handled. Either delete the comment and the dead `meta.condition` branches, or keep the branches and reword the comment as purely defensive ("only reachable if `dispatchConditionRejection` is enabled"). No functional impact.
-- **src/bootstrap/RootNavigator.test.tsx:349** — `launchWithFactory` duplicates most of `launch` (line 46): the onboarding and session storage seeding, the container setup and the route map. It exists only so one test can script the HTTP fake before the app starts. The route maps have already drifted: this one has no `(auth)/register` and no `trips/[tripId]` routes. *(maintainability)*
-  - status: open
-  - dev_reasoning: Fixed. `launch` takes an optional `configureApi` hook run before render; `launchWithFactory` is deleted, so there is one route map and one seeding path.
-  - ai_reasoning: Give `launch` an optional `configureApi?: (api: ReturnType<typeof stubDummyJson>) => void` (or accept a pre-built `httpClientFactory`), call it before `renderRouter`, and delete `launchWithFactory`. That gives one route map and one seeding path, so future scenarios can't diverge silently.
+- **src/features/discover/presentation/screens/DestinationScreen.tsx:252** — `void Linking.openURL(...)` discards the promise, so if the URL can't be opened (no browser, restricted profile, or a web build blocked by the popup blocker), the result is an unhandled promise rejection and the button silently does nothing. The `?? ''` fallback is also dead code: the button only renders when `articleUrl` is truthy, and if it were ever reached it would ask the OS to open an empty URL. *(error-handling)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. New shared helper `src/shared/navigation/openExternalUrl.ts` awaits `Linking.openURL` in a try/catch, logs failures through the passed logger, and resolves `false` instead of rejecting. `About` captures `articleUrl` inside the guard (no `?? ''`), calls the helper with a `destination`-scoped logger, and shows an `InlineMessage` (`destination.openLinkFailed`, en/es) when opening fails. Covered by `openExternalUrl.test.ts` (success and rejection) and the screen test 'tells the user when the article link cannot be opened'.
+- **src/features/discover/presentation/components/FilterSheet.tsx:154** — `FilterGroup` declares `accessibilityRole="radiogroup"`, but its children are `AppChip`s with `accessibilityRole="button"` and a `selected` state. Screen readers announce a radio group with no radio buttons, and VoiceOver/TalkBack users don't get the "1 of 7" position or the single-choice semantics the role promises. *(accessibility)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `FilterGroup` no longer declares `accessibilityRole="radiogroup"` (comment at line 154 records why); the chips stay toggle buttons announcing `selected`, matching their actual semantics.
 
 ## Reviewed files
+- .env.example
 - README.md
-- app.json
 - docs/ARCHITECTURE.md
-- package-lock.json
+- jest.afterEnv.ts
 - package.json
 - src/app/(app)/(tabs)/(explore)/_layout.tsx
 - src/app/(app)/(tabs)/(explore)/destinations/[destinationId].tsx
-- src/app/(app)/(tabs)/(explore)/explore.tsx (renamed from src/app/(tabs)/(explore)/index.tsx)
-- src/app/(app)/(tabs)/(home)/_layout.tsx
-- src/app/(app)/(tabs)/(home)/index.tsx
-- src/app/(app)/(tabs)/_layout.tsx
-- src/app/(app)/(tabs)/budget/_layout.tsx
-- src/app/(app)/(tabs)/budget/index.tsx
-- src/app/(app)/(tabs)/profile/_layout.tsx
-- src/app/(app)/(tabs)/profile/design-system.tsx (renamed from src/app/(tabs)/settings/design-system.tsx)
-- src/app/(app)/(tabs)/profile/index.tsx
-- src/app/(app)/(tabs)/profile/settings.tsx (renamed from src/app/(tabs)/settings/index.tsx)
-- src/app/(app)/(tabs)/trips/[tripId]/index.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/itinerary/[itemId].tsx
-- src/app/(app)/(tabs)/trips/_layout.tsx
-- src/app/(app)/(tabs)/trips/index.tsx
-- src/app/(app)/_layout.tsx
-- src/app/(app)/saved/_layout.tsx
-- src/app/(app)/saved/index.tsx
-- src/app/(auth)/_layout.tsx
-- src/app/(auth)/register.tsx
-- src/app/(auth)/sign-in.tsx
-- src/app/(tabs)/(explore)/_layout.tsx (deleted)
-- src/app/(tabs)/_layout.tsx (deleted)
-- src/app/(tabs)/settings/_layout.tsx (deleted)
-- src/app/+native-intent.tsx
-- src/app/+not-found.tsx
-- src/app/_layout.tsx
-- src/app/onboarding.tsx
-- src/app/splash.tsx
-- src/bootstrap/RootNavigator.test.tsx
-- src/bootstrap/RootNavigator.tsx
-- src/bootstrap/appPhase.ts
-- src/bootstrap/coreFactories.ts
+- src/app/(app)/(tabs)/(explore)/explore.tsx
+- src/app/(app)/(tabs)/(explore)/search.tsx
 - src/bootstrap/createAppContainer.ts
 - src/core/di/AppDependencies.ts
-- src/core/di/CoreDependencies.ts
 - src/core/errors/AppError.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
-- src/core/storage/ExpoSecureKeyValueStore.test.ts
-- src/core/storage/ExpoSecureKeyValueStore.ts
-- src/core/storage/MemorySecureKeyValueStore.ts
-- src/core/storage/SecureKeyValueStore.ts
 - src/core/store/store.ts
-- src/features/auth/data/DummyJsonAuthRepository.ts
-- src/features/auth/data/SecureSessionRepository.ts
-- src/features/auth/data/authData.test.ts
-- src/features/auth/data/authMappers.ts
-- src/features/auth/data/dto/authDtos.ts
-- src/features/auth/data/dummyJsonApi.ts
-- src/features/auth/data/jwt.ts
-- src/features/auth/di.ts
-- src/features/auth/domain/AuthRepository.ts
-- src/features/auth/domain/AuthSession.ts
-- src/features/auth/domain/AuthUser.ts
-- src/features/auth/domain/Credentials.test.ts
-- src/features/auth/domain/Credentials.ts
-- src/features/auth/domain/DemoAccount.ts
-- src/features/auth/domain/LoginAttemptLimiter.ts
-- src/features/auth/domain/SessionManager.test.ts
-- src/features/auth/domain/SessionManager.ts
-- src/features/auth/domain/SessionRepository.ts
-- src/features/auth/domain/usecases/FetchCurrentUser.ts
-- src/features/auth/domain/usecases/RegisterDemoAccount.ts
-- src/features/auth/domain/usecases/RestoreSession.ts
-- src/features/auth/domain/usecases/SignIn.ts
-- src/features/auth/domain/usecases/SignOut.ts
-- src/features/auth/domain/usecases/authUseCases.test.ts
-- src/features/auth/presentation/components/AuthScreenLayout.tsx
-- src/features/auth/presentation/components/BrandMark.tsx
-- src/features/auth/presentation/components/DemoAccountCard.tsx
-- src/features/auth/presentation/hooks/useLockoutCountdown.test.tsx
-- src/features/auth/presentation/hooks/useLockoutCountdown.ts
-- src/features/auth/presentation/hooks/useProfile.ts
-- src/features/auth/presentation/hooks/useRegisterForm.ts
-- src/features/auth/presentation/hooks/useSessionLifecycle.ts
-- src/features/auth/presentation/hooks/useSignInForm.ts
-- src/features/auth/presentation/hooks/useSignOut.ts
-- src/features/auth/presentation/screens/ProfileScreen.tsx
-- src/features/auth/presentation/screens/RegisterScreen.tsx
-- src/features/auth/presentation/screens/SignInScreen.tsx
-- src/features/auth/presentation/state/authSlice.test.ts
-- src/features/auth/presentation/state/authSlice.ts
-- src/features/auth/presentation/state/selectors.ts
-- src/features/budget/presentation/screens/BudgetScreen.tsx
 - src/features/destinations/presentation/screens/DestinationScreen.tsx
-- src/features/onboarding/data/StorageOnboardingRepository.ts
-- src/features/onboarding/di.ts
-- src/features/onboarding/domain/OnboardingRepository.ts
-- src/features/onboarding/domain/usecases/CompleteOnboarding.ts
-- src/features/onboarding/domain/usecases/LoadOnboardingStatus.ts
-- src/features/onboarding/presentation/components/SlideIllustration.tsx
-- src/features/onboarding/presentation/screens/OnboardingScreen.tsx
-- src/features/onboarding/presentation/slides.ts
-- src/features/onboarding/presentation/state/onboardingSlice.ts
-- src/features/preferences/presentation/screens/SettingsScreen.tsx
-- src/features/saved-places/presentation/screens/SavedPlacesScreen.tsx
-- src/features/shell/presentation/components/AppDrawerContent.tsx
-- src/features/shell/presentation/components/DrawerMenuButton.tsx
+- src/features/discover/data/RestCountriesRepository.test.ts
+- src/features/discover/data/RestCountriesRepository.ts
+- src/features/discover/data/StorageDiscoveryHistoryRepository.test.ts
+- src/features/discover/data/StorageDiscoveryHistoryRepository.ts
+- src/features/discover/data/WikipediaPlaceContentRepository.test.ts
+- src/features/discover/data/WikipediaPlaceContentRepository.ts
+- src/features/discover/data/apis.ts
+- src/features/discover/data/caching.test.ts
+- src/features/discover/data/caching.ts
+- src/features/discover/data/dto/restCountriesDtos.ts
+- src/features/discover/data/dto/wikipediaDtos.ts
+- src/features/discover/data/mappers.ts
+- src/features/discover/di.ts
+- src/features/discover/domain/Country.ts
+- src/features/discover/domain/Destination.ts
+- src/features/discover/domain/DestinationId.test.ts
+- src/features/discover/domain/DestinationId.ts
+- src/features/discover/domain/SearchFilters.test.ts
+- src/features/discover/domain/SearchFilters.ts
+- src/features/discover/domain/dayPeriod.test.ts
+- src/features/discover/domain/dayPeriod.ts
+- src/features/discover/domain/editorial.ts
+- src/features/discover/domain/repositories.ts
+- src/features/discover/domain/searchMatching.test.ts
+- src/features/discover/domain/searchMatching.ts
+- src/features/discover/domain/usecases/GetDestinationDetails.test.ts
+- src/features/discover/domain/usecases/GetDestinationDetails.ts
+- src/features/discover/domain/usecases/GetFilterOptions.ts
+- src/features/discover/domain/usecases/SearchDestinations.test.ts
+- src/features/discover/domain/usecases/SearchDestinations.ts
+- src/features/discover/domain/usecases/describePlace.ts
+- src/features/discover/domain/usecases/discoverFeed.test.ts
+- src/features/discover/domain/usecases/discoverFeed.ts
+- src/features/discover/domain/usecases/discoveryHistory.test.ts
+- src/features/discover/domain/usecases/discoveryHistory.ts
+- src/features/discover/presentation/categoryIcons.ts
+- src/features/discover/presentation/components/DestinationCards.tsx
+- src/features/discover/presentation/components/DestinationImage.tsx
+- src/features/discover/presentation/components/FilterSheet.tsx
+- src/features/discover/presentation/components/Section.tsx
+- src/features/discover/presentation/format.ts
+- src/features/discover/presentation/hooks/useDayPeriod.ts
+- src/features/discover/presentation/hooks/useDebouncedValue.test.ts
+- src/features/discover/presentation/hooks/useDebouncedValue.ts
+- src/features/discover/presentation/hooks/useDestinationDetails.ts
+- src/features/discover/presentation/hooks/useDestinationSearch.ts
+- src/features/discover/presentation/hooks/useDiscoverHome.ts
+- src/features/discover/presentation/screens/DestinationScreen.test.tsx
+- src/features/discover/presentation/screens/DestinationScreen.tsx
+- src/features/discover/presentation/screens/DiscoverScreen.test.tsx
+- src/features/discover/presentation/screens/DiscoverScreen.tsx
+- src/features/discover/presentation/screens/SearchScreen.test.tsx
+- src/features/discover/presentation/screens/SearchScreen.tsx
+- src/features/discover/presentation/state/discoverApi.test.ts
+- src/features/discover/presentation/state/discoverApi.ts
+- src/features/discover/presentation/state/discoverSlice.ts
+- src/features/discover/presentation/state/selectors.ts
+- src/features/explore/presentation/screens/ExploreScreen.test.tsx
+- src/features/explore/presentation/screens/ExploreScreen.tsx
 - src/features/shell/presentation/navigation.ts
-- src/features/shell/presentation/screens/HomeScreen.tsx
-- src/features/shell/presentation/screens/LaunchScreen.tsx
-- src/features/shell/presentation/screens/NotFoundScreen.tsx
-- src/features/shell/presentation/stackOptions.tsx
-- src/features/trips/presentation/screens/ItineraryItemScreen.tsx
-- src/features/trips/presentation/screens/TripScreen.tsx
-- src/features/trips/presentation/screens/TripsScreen.tsx
-- src/shared/navigation/InvalidLinkView.tsx
 - src/shared/navigation/deepLinks.test.ts
 - src/shared/navigation/deepLinks.ts
+- src/shared/navigation/openExternalUrl.test.ts
+- src/shared/navigation/openExternalUrl.ts
 - src/shared/navigation/routes.ts
-- src/shared/navigation/useDeferredDeepLink.ts
-- src/shared/ui/InlineMessage.tsx
+- src/shared/ui/AppChip.test.tsx
+- src/shared/ui/AppChip.tsx
 - src/shared/ui/icons.ts
 - src/shared/ui/index.ts
-- src/testing/authFixtures.ts
+- src/testing/FakeHttpClient.ts
+- src/testing/createTestStore.ts
+- src/testing/discoverFixtures.ts
+- src/testing/renderWithProviders.tsx
 - src/testing/testDependencies.ts
-- .code-reviews/brainx-review.md (previous review file, deleted before this work; not a code change)

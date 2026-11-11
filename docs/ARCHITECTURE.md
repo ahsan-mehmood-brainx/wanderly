@@ -324,3 +324,56 @@ The authorized HTTP client reads the token through `BearerTokenAuth(() => sessio
 ### Testing
 
 `bootstrap/RootNavigator.test.tsx` drives the real `RootNavigator`, guards, providers and auth screens with `renderRouter` (the signed-in area is a plain Stack, since the drawer and native tabs need native views). It covers onboarding, protected routes, login, validation, network errors, double submission, lockout, demo sign-up, restore, renewal, expiry, sign-out and deep-link replay. `testing/authFixtures.ts` provides `stubDummyJson`, `fakeJwt`, `testSession` and `InMemorySessionRepository`. In development builds, Profile › Session testing can expire the access token or invalidate the session on a device.
+
+## 11. Discover and destination search
+
+Feature 1 lives in `features/discover/` and is the reference for a feature with several data sources, RTK Query and on-device history.
+
+### Data sources and what they can't do
+
+| Source                     | Provides                                                                                                                                                    | Does not provide                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| REST Countries v5          | Countries: names, codes, capitals, region, population, area, flags, currencies, languages, time zones, borders, calling codes, driving side, Wikipedia link | Cities (beyond capitals), attractions, photos, travel categories |
+| Wikipedia                  | Descriptions, photos, title search across all articles                                                                                                      | Structured facts, a "places only" search, rankings               |
+| Editorial (`editorial.ts`) | Featured, trending and popular picks, destination categories                                                                                                | Anything dynamic                                                 |
+
+So search combines three result sets: countries and capitals matched **locally** against the cached catalogue, curated destinations, and Wikipedia title hits filtered to place-like descriptions (best-effort country inference from the description). Featured, trending and categories are editorial, because neither API ranks or classifies places.
+
+### Layers
+
+```
+presentation  DiscoverScreen · SearchScreen · DestinationScreen
+              view-model hooks · discoverApi (RTK Query) · discoverSlice (history)
+domain        Country, DestinationSummary, DestinationDetails, SearchFilters, DestinationId
+              SearchDestinations · GetDestinationDetails · GetCuratedCollection · GetPopularCountries
+              GetRecommendations · GetFilterOptions · DiscoveryHistory (+ thin history use cases)
+data          RestCountriesRepository · WikipediaPlaceContentRepository   (remote)
+              CachedCountryRepository · CachedPlaceContentRepository      (in-memory TTL decorators)
+              StorageDiscoveryHistoryRepository                            (KeyValueStore)
+```
+
+### RTK Query
+
+`discoverApi` uses `fakeBaseQuery` and calls a use case in each endpoint's `queryFn` (`api.extra` is the DI container, `api.signal` is passed through). Errors are stored as `{ kind: AppErrorKind }`. RTK Query provides the per-argument cache (`keepUnusedDataFor`: search 2 min, details and feed 30 min), de-duplication, loading flags and protection against out-of-order search responses. On-device state that isn't server data (search history, recently viewed) stays in `discoverSlice`.
+
+There are two cache levels on purpose: RTK Query caches what each screen asked for; the repository decorators cache the shared inputs (the country catalogue, Wikipedia summaries) that several use cases need, coalesce concurrent loads, and never cache failures.
+
+### Failure handling
+
+| Situation                                        | Behaviour                                                                                                      |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| No API key / key rejected / demo-key sample data | `configuration` error, no request when the key is missing; never shows sample data as real                     |
+| Retired API version (HTTP 200 with error body)   | Fails the envelope schema → `parse`                                                                            |
+| One malformed country                            | Skipped and logged; a malformed field blanks that field only                                                   |
+| 429                                              | Retried when `Retry-After` ≤ 5 s, otherwise `rateLimited` with copy asking to wait                             |
+| Wikipedia search fails                           | Local results still shown, with an inline notice                                                               |
+| Missing article / disambiguation page            | Other titles tried (article link from REST Countries, `X (country)`, `X, Country`), then "no description"      |
+| Missing or broken image                          | Themed placeholder (category icon, or flag emoji for countries)                                                |
+| One home section fails                           | That section shows an inline error with retry; others render                                                   |
+| Featured/trending sources fail                   | Catalogue failure (other than `configuration`) or every summary failing is an error with retry, not bare cards |
+| Description fails on a destination               | About card shows the failure with a "Try again" button that reloads the destination                            |
+| "Read more" link can't be opened                 | `openExternalUrl` logs it and the card shows an inline error; never an unhandled rejection                     |
+
+### Testing
+
+`testing/discoverFixtures.ts` provides a fixture world in the v5 wire format, `stubDiscoverApis` (scripts both APIs on a `FakeHttpClientFactory`) and stateful repository fakes. Stores for tests come from `createTestStore` (used by `renderWithProviders`); `jest.afterEnv.ts` resets them after each test so RTK Query's cache-expiry timers don't keep Jest running.

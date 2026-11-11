@@ -8,8 +8,11 @@ Built with Expo SDK 58, Expo Router, TypeScript (strict), and Redux Toolkit. The
 
 ```bash
 npm install
-npx expo start          # press i / a to open iOS / Android
+cp .env.example .env.local   # then add your REST Countries API key (see below)
+npx expo start               # press i / a to open iOS / Android
 ```
+
+Explore needs a free [REST Countries](https://restcountries.com/sign-up) API key in `EXPO_PUBLIC_RESTCOUNTRIES_API_KEY`. Without one the app still runs, but country data shows as unavailable (and a warning is logged in development). Restart `expo start` after changing `.env.local`.
 
 | Command             | Purpose                                                        |
 | ------------------- | -------------------------------------------------------------- |
@@ -51,7 +54,7 @@ src/
 - **Errors.** Repositories and the HTTP client return `Result<T, AppError>`. One taxonomy (`AppErrorKind`: `offline`, `timeout`, `notFound`, `server`, `parse`, …) runs from the transport to the UI, and `<AppErrorView errorKind={…} />` shows translated copy for each kind.
 - **Validation.** Data read from storage and API responses is parsed with Zod. For stored data, each field falls back on its own, so one bad value doesn't wipe the rest.
 - **Connectivity and logging.** `ConnectivityService` (expo-network) is observable (`useConnectivity()`). `Logger` has levels, scoped child loggers, secret redaction and pluggable transports (console in every build, `warn`+ in release; Sentry later).
-- **State.** Redux Toolkit holds app state. RTK Query may be added for server caching. If so, its `baseQuery` should wrap `HttpClient` so error handling stays in one place.
+- **State.** Redux Toolkit holds app state. Server data uses RTK Query (`discoverApi`), whose endpoints call use cases through `queryFn` instead of a `baseQuery`, so HTTP, validation and error mapping stay in the data layer. RTK Query adds per-argument caching, de-duplication and out-of-order protection on top. See [ARCHITECTURE.md § 11](docs/ARCHITECTURE.md#11-discover-and-destination-search).
 - **i18n.** Translation keys are type-checked. Every locale must match the shape of `en.ts`, so a missing or extra key is a compile error. To add a language, add a locale file, add it to `SUPPORTED_LANGUAGES`, and add it to `supportedLocales` in `app.json`.
 - **Theming.** Use `useAppTheme()` for colours, spacing, and typography, and don't hard-code colours. The user's theme choice is also applied to native UI through `Appearance.setColorScheme`.
 
@@ -77,7 +80,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 0.1 | Design system: brand tokens, Inter, shared components, Prettier                                       | Done    |
 | 0.2 | Architecture: DI container, use cases, HTTP layer (axios), error model, logging, connectivity         | Done    |
 | 0.3 | Navigation and authentication: drawer + tabs, onboarding, DummyJSON sign-in, sessions, deep links     | Done    |
-| 1   | Destination discovery and search                                                                      | Planned |
+| 1   | Destination discovery and search: Explore feed, search with filters and history, destination details  | Done    |
 | 2   | Weather                                                                                               | Planned |
 | 3   | Nearby places and map                                                                                 | Planned |
 | 4   | Trips and itineraries                                                                                 | Planned |
@@ -88,9 +91,11 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 
 ## Third-party data and attribution
 
-| API                                          | Used for                                      | Notes                                                                                                                                                                          |
-| -------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [DummyJSON](https://dummyjson.com/docs/auth) | Sign-in, token refresh, profile, demo sign-up | Public demo API, no key. Only its sample users can sign in (e.g. `emilys` / `emilyspass`). `POST /users/add` echoes new users but stores nothing, which the app says up front. |
+| API                                                                                         | Used for                                      | Notes                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [DummyJSON](https://dummyjson.com/docs/auth)                                                | Sign-in, token refresh, profile, demo sign-up | Public demo API, no key. Only its sample users can sign in (e.g. `emilys` / `emilyspass`). `POST /users/add` echoes new users but stores nothing, which the app says up front.                                                                |
+| [REST Countries v5](https://restcountries.com/docs/countries)                               | Country catalogue, details, flags             | API key (Bearer). Free plan: 100 objects per page, 20 requests per 10 s. v3.1 and older are retired. The app caches the catalogue and details in memory and searches locally, so typing never calls the API. Attributed on each country page. |
+| [Wikipedia](https://en.wikipedia.org/api/rest_v1/) (Wikimedia REST + MediaWiki REST search) | Descriptions, photos, city and place search   | No key. Text is CC BY-SA 4.0: the destination page shows the attribution and links to the article. Requests identify the app with `Api-User-Agent`.                                                                                           |
 
 When a feature adds an API, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
 
@@ -101,7 +106,10 @@ The `wanderly://` scheme opens:
 | Link                                           | Screen         |
 | ---------------------------------------------- | -------------- |
 | `wanderly://destinations/<destinationId>`      | Destination    |
+| `wanderly://search`                            | Search         |
 | `wanderly://trips/<tripId>`                    | Trip           |
 | `wanderly://trips/<tripId>/itinerary/<itemId>` | Itinerary item |
+
+Destination ids are `country-<alpha-2>` (`country-pt`), a curated slug (`kyoto`), or `place-<base64url>` for any other Wikipedia place (the payload is `<alpha-2>~<article title>`).
 
 If the link arrives while the session is being restored or the user is signed out, it opens right after sign-in. Ids are validated, and a malformed link shows an "invalid link" screen. To try one on a simulator: `npx uri-scheme open "wanderly://trips/abc" --ios` (or `--android`). In Expo Go, use `exp://<host>:8081/--/trips/abc`. Universal/app links (`https://…`) are already parsed, but they need an associated domain configured in `app.json` before they work.

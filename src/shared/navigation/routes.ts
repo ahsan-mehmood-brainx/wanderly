@@ -9,6 +9,13 @@ export interface DestinationRouteParams extends Record<string, string> {
   readonly destinationId: string;
 }
 
+export interface SearchRouteParams extends Record<string, string | undefined> {
+  /** Pre-filled query. */
+  readonly q?: string;
+  /** Pre-selected destination category (validated by the screen). */
+  readonly category?: string;
+}
+
 export interface TripRouteParams extends Record<string, string> {
   readonly tripId: string;
 }
@@ -39,12 +46,13 @@ export const routes = {
   savedPlaces: '/saved',
   signIn: '/sign-in',
   register: '/register',
+  search: (params: SearchRouteParams = {}) => ({ pathname: '/search', params }) satisfies Href,
   destination: (destinationId: string) =>
     ({ pathname: '/destinations/[destinationId]', params: { destinationId } }) satisfies Href,
   trip: (tripId: string) => ({ pathname: '/trips/[tripId]', params: { tripId } }) satisfies Href,
   itineraryItem: (tripId: string, itemId: string) =>
     ({ pathname: '/trips/[tripId]/itinerary/[itemId]', params: { tripId, itemId } }) satisfies Href,
-} as const satisfies Record<string, Href | ((...ids: string[]) => Href)>;
+} as const satisfies Record<string, Href | ((...args: never[]) => Href)>;
 
 const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -57,4 +65,17 @@ export function parseRouteId(value: string | string[] | undefined): string | nul
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return ROUTE_ID_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+/** Destination ids can encode a Wikipedia title (`place-…`), so they may be longer than other ids; same safe charset. */
+const DESTINATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,400}$/;
+
+/**
+ * Validates a destination id from the URL: shape only. The destination screen
+ * parses it strictly (`parseDestinationId`) and shows "invalid link" if that fails.
+ */
+export function parseDestinationRouteId(value: string | string[] | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return DESTINATION_ID_PATTERN.test(trimmed) ? trimmed : null;
 }

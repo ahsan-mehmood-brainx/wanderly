@@ -20,6 +20,8 @@ export const APP_ERROR_KINDS = [
   'sessionExpired',
   'notFound',
   'rateLimited',
+  /** A service the feature needs isn't set up in this build (e.g. a missing API key). */
+  'configuration',
   'badRequest',
   'server',
   'parse',

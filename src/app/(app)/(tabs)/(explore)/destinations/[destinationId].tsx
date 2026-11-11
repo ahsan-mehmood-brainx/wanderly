@@ -1,10 +1,15 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { DestinationScreen } from '@/features/destinations/presentation/screens/DestinationScreen';
+import { parseDestinationId } from '@/features/discover/domain/DestinationId';
+import { DestinationScreen } from '@/features/discover/presentation/screens/DestinationScreen';
 import { InvalidLinkView } from '@/shared/navigation/InvalidLinkView';
-import { parseRouteId, type DestinationRouteParams } from '@/shared/navigation/routes';
+import { type DestinationRouteParams, parseDestinationRouteId } from '@/shared/navigation/routes';
 
 export default function DestinationRoute() {
-  const destinationId = parseRouteId(useLocalSearchParams<DestinationRouteParams>().destinationId);
-  return destinationId ? <DestinationScreen destinationId={destinationId} /> : <InvalidLinkView />;
+  const destinationId = parseDestinationRouteId(useLocalSearchParams<DestinationRouteParams>().destinationId);
+  return destinationId && parseDestinationId(destinationId) ? (
+    <DestinationScreen destinationId={destinationId} />
+  ) : (
+    <InvalidLinkView />
+  );
 }

@@ -38,7 +38,21 @@ describe('resolveDeepLink', () => {
     expect(resolveDeepLink('/')).toBeNull();
     expect(resolveDeepLink('/trips/a%20b')).toBeNull();
     expect(resolveDeepLink('/trips/abc/itinerary')).toBeNull();
-    expect(resolveDeepLink(`/destinations/${'x'.repeat(65)}`)).toBeNull();
+    expect(resolveDeepLink(`/trips/${'x'.repeat(65)}`)).toBeNull();
+    expect(resolveDeepLink(`/destinations/${'x'.repeat(401)}`)).toBeNull();
+    expect(resolveDeepLink('/destinations/place-a.b')).toBeNull();
+  });
+});
+
+describe('destination deep links', () => {
+  it('accepts every destination id form, including long encoded place ids', () => {
+    expect(resolveDeepLink('wanderly://destinations/country-pt')).toEqual(routes.destination('country-pt'));
+    const placeId = `place-${'A'.repeat(300)}`;
+    expect(resolveDeepLink(`wanderly://destinations/${placeId}`)).toEqual(routes.destination(placeId));
+  });
+
+  it('opens search', () => {
+    expect(resolveDeepLink('wanderly://search')).toEqual(routes.search());
   });
 });
 
@@ -96,6 +110,7 @@ describe('drawer navigation helpers', () => {
   it('highlights the owning destination for nested screens', () => {
     expect(activeDestination('/')).toBe('home');
     expect(activeDestination('/destinations/kyoto')).toBe('explore');
+    expect(activeDestination('/search')).toBe('explore');
     expect(activeDestination('/trips/1/itinerary/2')).toBe('trips');
     expect(activeDestination('/profile/settings')).toBe('profile');
     expect(activeDestination('/budget')).toBeNull();
