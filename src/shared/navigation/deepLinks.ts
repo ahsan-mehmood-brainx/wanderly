@@ -63,9 +63,17 @@ export function resolveDeepLink(rawUrl: string): Href | null {
     const destinationId = parseDestinationRouteId(segments[1]);
     return destinationId ? routes.destination(destinationId) : null;
   }
+  if (segments.length === 3 && segments[0] === 'destinations' && segments[2] === 'weather') {
+    const destinationId = parseDestinationRouteId(segments[1]);
+    return destinationId ? routes.destinationWeather(destinationId) : null;
+  }
   if (segments[0] === 'trips' && segments.length === 2) {
     const tripId = parseRouteId(segments[1]);
     return tripId ? routes.trip(tripId) : null;
+  }
+  if (segments[0] === 'trips' && segments.length === 3 && segments[2] === 'weather') {
+    const tripId = parseRouteId(segments[1]);
+    return tripId ? routes.tripWeather(tripId) : null;
   }
   if (segments[0] === 'trips' && segments.length === 4 && segments[2] === 'itinerary') {
     const tripId = parseRouteId(segments[1]);

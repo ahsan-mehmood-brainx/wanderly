@@ -12,6 +12,7 @@ export default function TripsStackLayout() {
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Screen name="index" options={{ ...tabRootOptions, title: t('navigation.trips') }} />
       <Stack.Screen name="[tripId]/index" options={{ title: t('trips.tripTitle') }} />
+      <Stack.Screen name="[tripId]/weather" options={{ title: t('weather.title') }} />
       <Stack.Screen name="[tripId]/itinerary/[itemId]" options={{ title: t('trips.itineraryTitle') }} />
     </Stack>
   );

@@ -4,8 +4,10 @@ import { Linking } from 'react-native';
 
 import { routes } from '@/shared/navigation/routes';
 import { httpFailure, stubDiscoverApis, summaryDto } from '@/testing/discoverFixtures';
-import { apiSuccess, FakeHttpClientFactory } from '@/testing/FakeHttpClient';
+import { apiSuccess, type FakeHttpClient, FakeHttpClientFactory } from '@/testing/FakeHttpClient';
+import { ManualClock } from '@/testing/ManualClock';
 import { renderWithProviders } from '@/testing/renderWithProviders';
+import { forecastDto, stubWeatherApi, WEATHER_NOW } from '@/testing/weatherFixtures';
 
 import { summaryPath } from '../../data/WikipediaPlaceContentRepository';
 import { placeDestinationId } from '../../domain/DestinationId';
@@ -21,12 +23,15 @@ jest.mock('expo-router', () => {
   };
 });
 
-async function setup(id: string, configureApis?: (apis: ReturnType<typeof stubDiscoverApis>) => void) {
+async function setup(
+  id: string,
+  configureApis?: (apis: ReturnType<typeof stubDiscoverApis> & { openMeteo: FakeHttpClient }) => void,
+) {
   const httpClientFactory = new FakeHttpClientFactory();
-  const apis = stubDiscoverApis(httpClientFactory);
+  const apis = { ...stubDiscoverApis(httpClientFactory), openMeteo: stubWeatherApi(httpClientFactory) };
   configureApis?.(apis);
   const rendered = await renderWithProviders(<DestinationScreen destinationId={id} />, {
-    dependencies: { httpClientFactory },
+    dependencies: { httpClientFactory, clock: new ManualClock(WEATHER_NOW) },
   });
   return { ...apis, ...rendered, user: userEvent.setup() };
 }
@@ -142,5 +147,59 @@ describe('DestinationScreen', () => {
 
     expect(await screen.findByText("We couldn't find what you were looking for.")).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  describe('weather', () => {
+    it("shows a country's current weather at its reference point, linking to the full forecast", async () => {
+      const { user, openMeteo } = await setup('country-pt');
+
+      expect(await screen.findByLabelText('Portugal: 15°, Partly cloudy')).toBeOnTheScreen();
+      expect(screen.getByText('H 22° · L 10°')).toBeOnTheScreen();
+      expect(screen.getByText('Forecast for the centre of Portugal.')).toBeOnTheScreen();
+      expect(screen.getByText('Weather data by Open-Meteo.com (CC BY 4.0)')).toBeOnTheScreen();
+      expect(openMeteo.requests[0]?.query).toMatchObject({ latitude: 1, longitude: 2, timezone: 'auto' });
+
+      await user.press(screen.getByRole('button', { name: 'See full forecast' }));
+      expect(router.push).toHaveBeenCalledWith(routes.destinationWeather('country-pt'));
+    });
+
+    it('uses a place’s own coordinates, rounded', async () => {
+      const { openMeteo } = await setup('kyoto', ({ wikipedia }) =>
+        wikipedia.on(
+          'GET',
+          summaryPath('Kyoto'),
+          apiSuccess(summaryDto('Kyoto', { coordinates: { lat: 35.01164, lon: 135.76803 } })),
+        ),
+      );
+
+      expect(await screen.findByTestId('weather-card-current')).toBeOnTheScreen();
+      expect(openMeteo.requests[0]?.query).toMatchObject({ latitude: 35.01, longitude: 135.77 });
+    });
+
+    it('explains, without a request, when a place has no known position', async () => {
+      const { openMeteo } = await setup('kyoto');
+
+      expect(
+        await screen.findByText("We don't know exactly where this place is, so we can't show its weather."),
+      ).toBeOnTheScreen();
+      expect(openMeteo.requests).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: 'See full forecast' })).toBeNull();
+    });
+
+    it('keeps the destination usable when the weather service fails, and retries', async () => {
+      const { openMeteo, user } = await setup('country-pt', ({ openMeteo }) =>
+        openMeteo.on('GET', '/forecast', httpFailure('server', 503)),
+      );
+
+      expect(
+        await screen.findByText('The service is having trouble right now. Please try again later.'),
+      ).toBeOnTheScreen();
+      expect(screen.getByLabelText('Capital: Lisbon')).toBeOnTheScreen();
+
+      openMeteo.on('GET', '/forecast', apiSuccess(forecastDto()));
+      await user.press(screen.getByRole('button', { name: 'Try again' }));
+
+      expect(await screen.findByLabelText('Portugal: 15°, Partly cloudy')).toBeOnTheScreen();
+    });
   });
 });

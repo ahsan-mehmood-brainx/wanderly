@@ -81,6 +81,32 @@ export const icons = {
   trending: icon('chart.line.uptrend.xyaxis', 'trending_up'),
   wallet: icon('creditcard', 'account_balance_wallet'),
   warning: icon('exclamationmark.triangle', 'warning'),
+
+  // Weather: conditions (filled glyphs read better at small sizes) and measurements.
+  weatherClearDay: icon('sun.max.fill', 'sunny'),
+  weatherClearNight: icon('moon.stars.fill', 'moon_stars'),
+  weatherPartlyCloudyDay: icon('cloud.sun.fill', 'partly_cloudy_day'),
+  weatherPartlyCloudyNight: icon('cloud.moon.fill', 'partly_cloudy_night'),
+  weatherCloudy: icon('cloud.fill', 'cloud'),
+  weatherFog: icon('cloud.fog.fill', 'foggy'),
+  weatherDrizzle: icon('cloud.drizzle.fill', 'rainy_light'),
+  weatherRain: icon('cloud.rain.fill', 'rainy'),
+  weatherHeavyRain: icon('cloud.heavyrain.fill', 'rainy_heavy'),
+  weatherSleet: icon('cloud.sleet.fill', 'weather_mix'),
+  weatherSnow: icon('cloud.snow.fill', 'weather_snowy'),
+  weatherThunderstorm: icon('cloud.bolt.rain.fill', 'thunderstorm'),
+  weatherHail: icon('cloud.hail.fill', 'weather_hail'),
+  weatherUnknown: icon('thermometer.medium', 'thermostat'),
+  sunrise: icon('sunrise.fill', 'wb_twilight'),
+  sunset: icon('sunset.fill', 'wb_twilight'),
+  humidity: icon('humidity.fill', 'humidity_percentage'),
+  wind: icon('wind', 'air'),
+  thermometer: icon('thermometer.medium', 'thermostat'),
+  umbrella: icon('umbrella.fill', 'umbrella'),
+  raindrop: icon('drop.fill', 'water_drop'),
+  uvIndex: icon('sun.max', 'light_mode'),
+  arrowUp: icon('arrow.up', 'north'),
+  myLocation: icon('location.fill', 'my_location'),
 } as const satisfies Record<string, IconDefinition>;
 
 export type AppIconName = keyof typeof icons;

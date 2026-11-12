@@ -7,8 +7,10 @@ import { authFactories } from '@/features/auth/di';
 import { discoverFactories } from '@/features/discover/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
+import { weatherFactories } from '@/features/weather/di';
 
 import { FakeConnectivityService } from './FakeConnectivityService';
+import { FakeDeviceLocationService } from './FakeDeviceLocationService';
 import { FakeHttpClientFactory } from './FakeHttpClient';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
@@ -53,8 +55,11 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...onboardingFactories,
     ...authFactories,
     ...discoverFactories,
+    ...weatherFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
+    // No native location module in tests; permission starts undetermined.
+    deviceLocationService: () => new FakeDeviceLocationService(),
     ...valueFactories(overrides),
   });
 }

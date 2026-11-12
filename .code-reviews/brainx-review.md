@@ -1,145 +1,122 @@
 ---
-diff_hash: 9d9e305e37c09236e8822fdb0c3499a08d1560f8914f2ddacc27ac88b1d30230
-reviewed_at: 2026-11-11T18:56:04Z
+diff_hash: a4effe22c13bb1ccb46efa6cad5e2c96d68a14e69be1c73d986ad2a83fd00047
+reviewed_at: 2026-11-12T07:25:27Z
 
 ## Summary
 
-Feature 1, destination discovery and search. The placeholder `explore` and `destinations` features are replaced by a `discover` feature in three layers. **Data:** a REST Countries v5 repository (API key via `EXPO_PUBLIC_RESTCOUNTRIES_API_KEY`, paged catalogue, per-object validation, demo-key and 401 mapped to a new `configuration` error kind), a Wikipedia repository (page summaries and title search, `Api-User-Agent`), in-memory TTL/LRU caching decorators with request coalescing, and AsyncStorage-backed search history and recently viewed. **Domain:** `DestinationId` (country / curated slug / base64url place ids, with a strict UTF-8 decoder), search matching and ranking, filters, editorial catalogue, and use cases for search, details, the feed (featured, trending, popular, recommendations), filter options and history. **Presentation:** an RTK Query `discoverApi` whose `queryFn`s call the use cases, a `discoverSlice` for history, and the Discover, Search and Destination screens with a filter sheet. Also: a new shared `AppChip`, new icons, a `/search` route and deep link, longer destination route ids (`parseDestinationRouteId`), en/es copy, `.env.example`, a Jest after-each hook that resets RTK Query stores, docs, and about 50 new test files.
+Feature 2, weather. A new `weather` feature in three layers. **Data:** an Open-Meteo repository (`/v1/forecast` with `timezone=auto` and `timeformat=unixtime`, a 10 s timeout and one retry, zod DTOs where every measurement falls back on its own), mappers (sorting and de-duplicating by time, clamping percentages, dropping negative speeds and amounts, ordering low ≤ high, and treating polar day and night as having no sunrise or sunset), a `StorageWeatherCache` (up to 6 forecasts in AsyncStorage, validated entry by entry), and an `ExpoDeviceLocationService` over `expo-location` (foreground only, last-known fix first, then a 15 s low-accuracy fix). **Domain:** `Coordinates` (validation, rounding to 2 decimals, 0,0 treated as missing), WMO code mapping, weather calculations (compass, local date keys, upcoming hours and days, "now" from `current` or the matching hour, range bars), `GetWeatherForecast` (a 15 min fresh window, and a saved copy up to 72 h old for transient failures), and the device-location and permission use cases. **Presentation:** an RTK Query `weatherApi`, `useWeather` and `useDeviceWeather` hooks, and summary, card and full-forecast components. It's wired into the destination page (a card), a new `destinations/[id]/weather` screen, the trip page (device weather, until trips have destinations) and a new `trips/[id]/weather` screen, with routes, deep links, three new `AppError` kinds, en/es copy, icons, an `expo-location` config plugin with the when-in-use string, docs and tests.
 
-Fresh review. A `brainx-review.md` existed, but it was the review for 8992404 (navigation and auth), which was committed and already finalized in the ledger by f659319. None of its findings concern this diff, and a Step 4 re-review cannot raise new findings, so this review replaces it. The developer chose to review all changes, so `git add -A` was run first. `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, the convention prior reviews in this repo used, so the hash doesn't depend on the review file itself.
+Fresh review. A `brainx-review.md` existed, but it was the review for 3f11f9f (discovery and search), which is committed and already finalized in the ledger by 1f7595d. None of its findings concern this diff, and a Step 4 re-review can't raise new findings, so this review replaces it. The developer asked for all changes to be staged, so `git add -A` was run first. `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, the convention prior reviews in this repo used.
 
-Stack: React (`react` in dependencies, no NestJS marker). The runtime is React Native / Expo SDK 58, so the web-only criteria in `react.md` (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404, httpOnly cookies) were not applied. Hooks, state management (RTK / RTK Query), routing, data fetching, error handling, typing, accessibility and security criteria were.
+Stack: React (`react` in dependencies, no NestJS marker). The runtime is React Native / Expo SDK 58, so the web-only criteria in `react.md` (CSS class naming, CSS variables, `dangerouslySetInnerHTML`, React Router 404, httpOnly cookies) weren't applied. Hooks, state (RTK Query), routing, data fetching, error handling, typing, accessibility and security criteria were.
 
-Suspicions checked and dismissed: (1) `BearerTokenAuth` on the REST Countries client only attaches a header (`core/http/strategies/AuthStrategy.ts:40`), so a 401 there can't trigger the DummyJSON session renewal or sign-out. (2) The API key is `EXPO_PUBLIC_*` and therefore public; this is documented in `apis.ts`, `.env.example` and the README, and `.env*.local` is gitignored. (3) URLs from both APIs reach `expo-image` and `Linking.openURL` only through `toHttpsUrl` (https only). Route and deep-link ids are charset-checked (`[A-Za-z0-9_-]{1,400}`) and then parsed strictly (`parseDestinationId`, with control characters, overlong UTF-8 and surrogates rejected). (4) Search races: RTK Query keys the cache on (query, filters), and `isError` is per argument, so an old failure or response can't attach to a new query. (5) `DiscoveryHistory` read-modify-write: mutators read the live snapshot synchronously after `await load()` and queue writes, so concurrent changes don't drop each other. (6) Destination screen opened by deep link before the Explore home mounts: `recordView` awaits `load()` itself, so the disk history isn't overwritten.
+Suspicions checked and dismissed: (1) Privacy: device coordinates are rounded to about 1.1 km before they become an RTK Query key or reach Open-Meteo, the prompt is only shown after an in-app explanation and a tap, and `app.json` declares only the when-in-use permission. (2) Open-Meteo needs no key, so no secret is in the bundle. (3) Time zones: days are keyed by the forecast's offset, and times are formatted in the forecast's IANA zone with a fixed-offset fallback, so "today" and the hour labels are the destination's. (4) `api.forced` is set by RTK Query's `refetch()`, so "try again" and pull to refresh do skip the saved copy. (5) A rejected `deviceLocation` entry is refetched when the query is un-skipped after permission is granted, because RTK Query re-runs queries with no fulfilled value. (6) Deep-link ids for both weather routes go through the same validation as the parent routes.
 
-Verified with a throwaway probe test (deleted afterwards): with a synthetic 240-country catalogue, browsing the "City" category returns 50 results ending at "Capital 048", browsing a region holding 58 countries returns 50, and `GetCuratedCollection('featured')` with both sources offline returns `ok` with cards that have no image, description, country name or flag (see findings).
-
-Skimmed, not read line by line: the ~50 test files (the suite passes; fixtures were read where probes relied on them), `editorial.ts` beyond its type and first entries (static data), the en/es locale additions (key parity is enforced by the compiler; spot-checked the strings findings refer to), and `README.md` / `docs/ARCHITECTURE.md` (checked for consistency with the code). Not verified on a device or simulator: image loading, the filter bottom sheet with the keyboard, and native-tab behaviour of the new `search` screen.
-
-Verification run before writing this review: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 53 suites / 476 tests passing.
+Skimmed, not read line by line: the test files (the suite passes; fixtures were read where findings relied on them), the en/es locale additions (key parity is enforced by the compiler), the icon table, `README.md` and `docs/ARCHITECTURE.md`, and `package-lock.json` (one new dependency, `expo-location ~58.0.21`). Not verified on a device: the permission prompt, `Linking.openSettings`, and the horizontal hourly list inside the vertical scroll view.
 
 Cross-repo: only one repository has staged changes.
 
-Re-review (2026-11-11T18:56:04Z): the staged diff changed since the review above. All five findings were re-evaluated against the changed lines and are fixed (details per finding). Changes since the last review also add `src/shared/navigation/openExternalUrl.ts` (+ test), touch `AppChip`, `FilterSheet`, `DestinationScreen`, `discoverFeed`, `SearchDestinations` and their tests, and add the `destination.openLinkFailed` copy. Per the re-review rules, no new findings were raised. Verification: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 54 suites / 484 tests passing.
+Re-review (2026-11-12T07:25:27Z): the staged diff changed since the review above. All four findings were re-evaluated against the changed lines and are fixed (details per finding). The changes also add `src/features/weather/presentation/hooks/useNow.ts` and `src/features/discover/presentation/destinationWeatherState.ts`, give `DestinationWeatherCard` `onRetryDetails` / `refreshingDetails` props, add a `now` field to the ready `WeatherState` (the views now use it instead of calling `clock.now()` themselves), add tests to `DestinationWeatherScreen.test.tsx`, `StorageWeatherCache.test.ts` and `TripScreen.test.tsx`, and update the weather edge-case table in `docs/ARCHITECTURE.md`. Per the re-review rules, no new findings were raised. Each new regression test was checked to fail with its fix temporarily reverted (3 failures). Verification: `npm run check` (tsc, expo lint, prettier --check, jest) is clean, with 67 suites / 645 tests passing.
 
 ## Findings
 
 ### Critical (0)
 
-### High (1)
-- **src/features/discover/domain/usecases/SearchDestinations.ts:86** — Browse mode (empty query, active filters) silently truncates an alphabetically sorted list to `MAX_RESULTS` (50), and the screen reports the truncated count as the total ("50 destinations"). Tapping the **City** category chip on the Explore home (`routes.search({ category: 'city' })`) browses every capital (~245) plus the curated cities, so the user sees only cities from A to roughly C and has no way to page further. Region browsing loses the same tail: "Africa" (about 58 entries in REST Countries) drops the last ~8 alphabetically (e.g. Zambia and Zimbabwe), and "Europe" and "Americas" are also over 50. Confirmed with a probe: a "city" browse over 240 countries returned 50 results ending at "Capital 048", and a 58-country region returned 50. *(correctness)*
-  - status: fixed
-  - dev_reasoning: N/A
-  - ai_reasoning: Fixed. `SearchDestinations.execute` now returns browse results uncapped (line 89, with a comment explaining why); `MAX_RESULTS` is applied only to ranked search (line 110), and the constant's doc comment says so. `SearchDestinations.test.ts` adds 'does not cap browsing, so the end of the alphabet is reachable': a region browse over `MAX_RESULTS + 10` countries returns all of them, ending at the last one alphabetically, and a city browse returns at least that many. 'caps ranked search results' keeps the cap covered for search.
+### High (0)
 
 ### Medium (2)
-- **src/features/discover/domain/usecases/discoverFeed.ts:29** — Feed failures become cached successes that are never retried. `loadCountryIndex` turns a catalogue failure into an empty map, and `enrichCurated` (lines 45–60) turns Wikipedia failures into cards with no photo or description. `GetCuratedCollection` therefore returns `ok` even when every source failed. If the app opens offline (or REST Countries/Wikipedia hiccups once), Featured and Trending render as bare placeholder cards with no country name or flag, and `SectionState` shows no error, so there's no retry. The Explore screen is a tab root that stays mounted, and nothing refetches (no `refetchOnFocus` / `refetchOnReconnect` / `setupListeners`, no pull-to-refresh), so that degraded result stays for the whole app session. Popular, by contrast, fails properly and offers retry. Confirmed with a probe: with `getAll` and `getSummary` both returning `offline`, `execute({ collection: 'featured' })` returned `ok` with `{"countryName":null,"description":null,"imageUrl":null,"flagEmoji":null,…}`. *(correctness)*
+- **src/features/weather/presentation/hooks/useWeather.ts:77** — The summary is derived from `clock.now()` inside a `useMemo` whose dependencies never change with time, and nothing refetches while a screen stays mounted. The destination page and the trip page are stack screens that stay mounted when the app goes to the background or the user switches tabs. If someone opens Lisbon in the evening and comes back the next morning, "Now", the highlighted hour, "Today", H/L and the 7-day list still describe the previous evening, and `ageMs` (used by "Updated …") is frozen too. RTK Query keeps the subscribed entry indefinitely (`keepUnusedDataFor` only applies after unsubscribe, and there's no `refetchOnFocus` or `setupListeners`), so the forecast isn't downloaded again either. The components call `clock.now()` themselves for labels, so the "Now" label and the frozen `summary.hours` can disagree in the same render. The app already handles this for the greeting (`useDayPeriod` recomputes on `AppState` 'active'). *(correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed. `loadCountryIndex` now reports the catalogue error alongside the empty index, and `enrichCurated` reports `allFailed` when every summary failed. `GetCuratedCollection` (lines 105–116) returns an error for any retryable catalogue failure and when every summary failed, so `SectionState` shows its retry and nothing degraded is cached as a success. A missing API key (`configuration`) still degrades to cards without the country, since retrying can't fix it, and recommendations intentionally ignore `allFailed`. `discoverFeed.test.ts` covers catalogue offline, every summary failing, both offline, and the configuration case. Not done: `refetchOnReconnect` / pull-to-refresh (the ai_reasoning offered it as optional); a failed section now recovers through its retry button.
-- **src/features/discover/presentation/screens/DestinationScreen.tsx:261** — A failed Wikipedia description is cached as part of a successful details result, and the screen gives no way to retry. `describePlace` returns `ok({ status: 'failed' })` for a network or server error, so `destinationDetails` is fulfilled and RTK Query keeps it for `CACHE_SECONDS.details` (30 minutes after the screen unmounts). The About card then shows "We couldn't load the description right now." with no retry, and revisiting the destination within 30 minutes (from recents, a neighbour chip or search) serves the same cached failure. `useDestinationDetails` already returns `retry` and `refreshing`, but they're only wired to the full-screen error state. *(correctness)*
+  - ai_reasoning: Fixed. New `useNow(clock)` (`presentation/hooks/useNow.ts`) keeps the time in state, ticking every 60 s and on `AppState` 'active', with the interval and listener cleaned up on unmount. `useWeather` derives the summary from it (line 96) and puts the same instant on the ready state as `now`, which `WeatherSummaryContent` and `WeatherForecastView` now use instead of their own `clock.now()`, so labels and the summary can't disagree. A second `AppState` listener (lines 72–78) refetches on return to the foreground when the forecast is at least `DEFAULT_WEATHER_CACHE_POLICY.freshForMs` old. It only runs on foreground, so a failing service isn't polled. `DestinationWeatherScreen.test.tsx` adds 'moves on to the new day, and asks for a new forecast, when the app returns after a night': the clock advances 24 h, the foreground triggers a second request (offline, so the saved copy is shown), "Updated 1 day ago" appears, and the 13th becomes "Today". The test fails with the tick disabled.
+- **src/features/discover/domain/Destination.ts:600** — `destinationWeatherPlace` maps a *failed* Wikipedia summary (`description.status === 'failed'`, e.g. offline or a 503) to `coordinates: null`, the same as an article that really has no coordinates. `useWeather(null)` then reports `locationUnavailable`, which is in `PERMANENT_KINDS`, so there's no retry. The weather card on a city's page says "We don't know exactly where this place is, so we can't show its weather." even though the problem is the network. On the full forecast screen (`DestinationWeatherScreen`, e.g. from a deep link) the user sees "Weather unavailable" with no way to recover, and `destinationDetails` keeps that failed description cached for 30 minutes after unmount, so going back and forth doesn't help. *(correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed. `About` now takes `onRetry` / `refreshing` from `useDestinationDetails` (threaded through `CountryDetails` and `PlaceDetails`) and shows a 'Try again' button with a loading state when `description.status === 'failed'` (lines 294–304). The retry refetches the details query, which replaces the cached failure. `DestinationScreen.test.tsx` adds 'still shows the country when the description fails to load, and retries it': the summary fails with 503, then succeeds after pressing Try again, and the extract replaces the failure message.
+  - ai_reasoning: Fixed. `DestinationWeatherPlace` gains `coordinatesError` (line 164), set from `description.errorKind` when the summary failed (line 186) and `null` otherwise. The new `destinationWeatherState` (`discover/presentation/destinationWeatherState.ts`) turns that into an error state whose retry refetches the destination details, or a loading state while they refetch. A real "no coordinates" place still gets the permanent message. Both `DestinationWeatherCard` (new `onRetryDetails` / `refreshingDetails` props, wired from `useDestinationDetails` in `DestinationScreen`) and `DestinationWeatherScreen` (`destination.refetch` / `isFetching`) use it. `DestinationWeatherScreen.test.tsx` adds "offers a retry when a place's position couldn't be loaded, and shows its weather after": the Kyoto summary returns 503, the service error with a retry is shown (not the no-coordinates copy), and after the retry the forecast loads for the rounded coordinates. The test fails with the helper bypassed.
 
 ### Low (2)
-- **src/features/discover/presentation/screens/DestinationScreen.tsx:252** — `void Linking.openURL(...)` discards the promise, so if the URL can't be opened (no browser, restricted profile, or a web build blocked by the popup blocker), the result is an unhandled promise rejection and the button silently does nothing. The `?? ''` fallback is also dead code: the button only renders when `articleUrl` is truthy, and if it were ever reached it would ask the OS to open an empty URL. *(error-handling)*
+- **src/features/weather/data/StorageWeatherCache.ts:76** — `save` is an unserialised read-modify-write of the whole list. Two forecasts for different coordinates that download at the same time (e.g. the destination card and the trip's device weather both refetching when the device reconnects, through `useWeather`'s reconnect effect) both read the same list, and the second `setItem` drops the first forecast. The only effect is a lost offline copy, so the next offline launch for that place shows an error instead of saved weather. *(correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed. New shared helper `src/shared/navigation/openExternalUrl.ts` awaits `Linking.openURL` in a try/catch, logs failures through the passed logger, and resolves `false` instead of rejecting. `About` captures `articleUrl` inside the guard (no `?? ''`), calls the helper with a `destination`-scoped logger, and shows an `InlineMessage` (`destination.openLinkFailed`, en/es) when opening fails. Covered by `openExternalUrl.test.ts` (success and rejection) and the screen test 'tells the user when the article link cannot be opened'.
-- **src/features/discover/presentation/components/FilterSheet.tsx:154** — `FilterGroup` declares `accessibilityRole="radiogroup"`, but its children are `AppChip`s with `accessibilityRole="button"` and a `selected` state. Screen readers announce a radio group with no radio buttons, and VoiceOver/TalkBack users don't get the "1 of 7" position or the single-choice semantics the role promises. *(accessibility)*
+  - ai_reasoning: Fixed. `save` (line 83) now chains each write onto `this.writes`, and the read-modify-write runs inside the queued `write` (line 89). `write` never rejects (storage errors are caught and logged), so a failed save can't stall later ones. `StorageWeatherCache.test.ts` adds 'keeps both forecasts when two places are saved at the same time' (fails without the queue) and 'keeps saving after a save fails'.
+- **src/features/weather/presentation/components/DeviceWeather.tsx:113** — The full-screen `DeviceWeatherView` drops two things the card handles: the `requesting` state (its "Use my location" action has no loading state, so a second tap while the system prompt is coming up calls `requestForegroundPermissionsAsync` again), and the `openSettings` result (`onAction={() => void state.openSettings()}` ignores `false`, so if Settings can't be opened the button just does nothing, while the card shows `weather.device.openSettingsFailed`). *(error-handling)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed. `FilterGroup` no longer declares `accessibilityRole="radiogroup"` (comment at line 154 records why); the chips stay toggle buttons announcing `selected`, matching their actual semantics.
+  - ai_reasoning: Fixed. `useDeviceWeather.request` now returns early while a request is in flight, using a ref (`useDeviceWeather.ts:66`) rather than state so two taps in the same frame are caught too. Both views benefit. `DeviceWeatherView`'s blocked state keeps the `openSettings` result and appends `weather.device.openSettingsFailed` to the message when it's `false` (`DeviceWeather.tsx:109`, 132–133). `TripScreen.test.tsx` adds a `TripWeatherScreen` block: 'asks the system only once when "Use my location" is tapped again while the prompt is coming up' (two taps while the prompt is pending, so one `requestPermission` call) and 'says so when Settings cannot be opened'.
 
 ## Reviewed files
-- .env.example
 - README.md
+- app.json
 - docs/ARCHITECTURE.md
-- jest.afterEnv.ts
+- package-lock.json
 - package.json
 - src/app/(app)/(tabs)/(explore)/_layout.tsx
-- src/app/(app)/(tabs)/(explore)/destinations/[destinationId].tsx
-- src/app/(app)/(tabs)/(explore)/explore.tsx
-- src/app/(app)/(tabs)/(explore)/search.tsx
+- src/app/(app)/(tabs)/(explore)/destinations/[destinationId]/weather.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/weather.tsx
+- src/app/(app)/(tabs)/trips/_layout.tsx
 - src/bootstrap/createAppContainer.ts
 - src/core/di/AppDependencies.ts
 - src/core/errors/AppError.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
 - src/core/store/store.ts
-- src/features/destinations/presentation/screens/DestinationScreen.tsx
-- src/features/discover/data/RestCountriesRepository.test.ts
-- src/features/discover/data/RestCountriesRepository.ts
-- src/features/discover/data/StorageDiscoveryHistoryRepository.test.ts
-- src/features/discover/data/StorageDiscoveryHistoryRepository.ts
-- src/features/discover/data/WikipediaPlaceContentRepository.test.ts
-- src/features/discover/data/WikipediaPlaceContentRepository.ts
-- src/features/discover/data/apis.ts
-- src/features/discover/data/caching.test.ts
-- src/features/discover/data/caching.ts
-- src/features/discover/data/dto/restCountriesDtos.ts
-- src/features/discover/data/dto/wikipediaDtos.ts
-- src/features/discover/data/mappers.ts
-- src/features/discover/di.ts
-- src/features/discover/domain/Country.ts
 - src/features/discover/domain/Destination.ts
-- src/features/discover/domain/DestinationId.test.ts
-- src/features/discover/domain/DestinationId.ts
-- src/features/discover/domain/SearchFilters.test.ts
-- src/features/discover/domain/SearchFilters.ts
-- src/features/discover/domain/dayPeriod.test.ts
-- src/features/discover/domain/dayPeriod.ts
-- src/features/discover/domain/editorial.ts
-- src/features/discover/domain/repositories.ts
-- src/features/discover/domain/searchMatching.test.ts
-- src/features/discover/domain/searchMatching.ts
-- src/features/discover/domain/usecases/GetDestinationDetails.test.ts
-- src/features/discover/domain/usecases/GetDestinationDetails.ts
-- src/features/discover/domain/usecases/GetFilterOptions.ts
-- src/features/discover/domain/usecases/SearchDestinations.test.ts
-- src/features/discover/domain/usecases/SearchDestinations.ts
-- src/features/discover/domain/usecases/describePlace.ts
-- src/features/discover/domain/usecases/discoverFeed.test.ts
-- src/features/discover/domain/usecases/discoverFeed.ts
-- src/features/discover/domain/usecases/discoveryHistory.test.ts
-- src/features/discover/domain/usecases/discoveryHistory.ts
-- src/features/discover/presentation/categoryIcons.ts
-- src/features/discover/presentation/components/DestinationCards.tsx
-- src/features/discover/presentation/components/DestinationImage.tsx
-- src/features/discover/presentation/components/FilterSheet.tsx
-- src/features/discover/presentation/components/Section.tsx
-- src/features/discover/presentation/format.ts
-- src/features/discover/presentation/hooks/useDayPeriod.ts
-- src/features/discover/presentation/hooks/useDebouncedValue.test.ts
-- src/features/discover/presentation/hooks/useDebouncedValue.ts
-- src/features/discover/presentation/hooks/useDestinationDetails.ts
-- src/features/discover/presentation/hooks/useDestinationSearch.ts
-- src/features/discover/presentation/hooks/useDiscoverHome.ts
+- src/features/discover/presentation/components/DestinationWeatherCard.tsx
+- src/features/discover/presentation/destinationWeatherState.ts
 - src/features/discover/presentation/screens/DestinationScreen.test.tsx
 - src/features/discover/presentation/screens/DestinationScreen.tsx
-- src/features/discover/presentation/screens/DiscoverScreen.test.tsx
-- src/features/discover/presentation/screens/DiscoverScreen.tsx
-- src/features/discover/presentation/screens/SearchScreen.test.tsx
-- src/features/discover/presentation/screens/SearchScreen.tsx
-- src/features/discover/presentation/state/discoverApi.test.ts
-- src/features/discover/presentation/state/discoverApi.ts
-- src/features/discover/presentation/state/discoverSlice.ts
-- src/features/discover/presentation/state/selectors.ts
-- src/features/explore/presentation/screens/ExploreScreen.test.tsx
-- src/features/explore/presentation/screens/ExploreScreen.tsx
-- src/features/shell/presentation/navigation.ts
+- src/features/discover/presentation/screens/DestinationWeatherScreen.test.tsx
+- src/features/discover/presentation/screens/DestinationWeatherScreen.tsx
+- src/features/trips/presentation/screens/TripScreen.test.tsx
+- src/features/trips/presentation/screens/TripScreen.tsx
+- src/features/trips/presentation/screens/TripWeatherScreen.tsx
+- src/features/weather/data/ExpoDeviceLocationService.test.ts
+- src/features/weather/data/ExpoDeviceLocationService.ts
+- src/features/weather/data/OpenMeteoWeatherRepository.test.ts
+- src/features/weather/data/OpenMeteoWeatherRepository.ts
+- src/features/weather/data/StorageWeatherCache.test.ts
+- src/features/weather/data/StorageWeatherCache.ts
+- src/features/weather/data/dto/openMeteoDtos.ts
+- src/features/weather/data/openMeteoApi.ts
+- src/features/weather/data/openMeteoMappers.test.ts
+- src/features/weather/data/openMeteoMappers.ts
+- src/features/weather/di.ts
+- src/features/weather/domain/Coordinates.test.ts
+- src/features/weather/domain/Coordinates.ts
+- src/features/weather/domain/Weather.ts
+- src/features/weather/domain/repositories.ts
+- src/features/weather/domain/usecases/GetWeatherForecast.test.ts
+- src/features/weather/domain/usecases/GetWeatherForecast.ts
+- src/features/weather/domain/usecases/deviceLocation.test.ts
+- src/features/weather/domain/usecases/deviceLocation.ts
+- src/features/weather/domain/weatherCalculations.test.ts
+- src/features/weather/domain/weatherCalculations.ts
+- src/features/weather/domain/weatherCodes.test.ts
+- src/features/weather/domain/weatherCodes.ts
+- src/features/weather/presentation/components/CurrentConditions.tsx
+- src/features/weather/presentation/components/DailyForecastList.tsx
+- src/features/weather/presentation/components/DeviceWeather.tsx
+- src/features/weather/presentation/components/HourlyForecastStrip.tsx
+- src/features/weather/presentation/components/SavedForecastNotice.tsx
+- src/features/weather/presentation/components/WeatherDetailsGrid.tsx
+- src/features/weather/presentation/components/WeatherForecastView.tsx
+- src/features/weather/presentation/components/WeatherIcon.tsx
+- src/features/weather/presentation/components/WeatherSection.tsx
+- src/features/weather/presentation/components/WeatherSummaryCard.tsx
+- src/features/weather/presentation/format.test.ts
+- src/features/weather/presentation/format.ts
+- src/features/weather/presentation/hooks/useDeviceWeather.ts
+- src/features/weather/presentation/hooks/useNow.ts
+- src/features/weather/presentation/hooks/useWeather.ts
+- src/features/weather/presentation/state/weatherApi.test.ts
+- src/features/weather/presentation/state/weatherApi.ts
+- src/features/weather/presentation/units.ts
+- src/features/weather/presentation/weatherIcons.ts
 - src/shared/navigation/deepLinks.test.ts
 - src/shared/navigation/deepLinks.ts
-- src/shared/navigation/openExternalUrl.test.ts
-- src/shared/navigation/openExternalUrl.ts
 - src/shared/navigation/routes.ts
-- src/shared/ui/AppChip.test.tsx
-- src/shared/ui/AppChip.tsx
 - src/shared/ui/icons.ts
-- src/shared/ui/index.ts
-- src/testing/FakeHttpClient.ts
+- src/testing/FakeDeviceLocationService.ts
 - src/testing/createTestStore.ts
-- src/testing/discoverFixtures.ts
-- src/testing/renderWithProviders.tsx
 - src/testing/testDependencies.ts
+- src/testing/weatherFixtures.ts

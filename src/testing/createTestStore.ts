@@ -1,6 +1,7 @@
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { createAppStore, type AppStore, type RootState } from '@/core/store/store';
 import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
+import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
 
 const liveStores = new Set<AppStore>();
 
@@ -17,6 +18,9 @@ export function createTestStore(dependencies: AppDependencies, preloadedState?: 
 }
 
 export function resetTestStores(): void {
-  for (const store of liveStores) store.dispatch(discoverApi.util.resetApiState());
+  for (const store of liveStores) {
+    store.dispatch(discoverApi.util.resetApiState());
+    store.dispatch(weatherApi.util.resetApiState());
+  }
   liveStores.clear();
 }

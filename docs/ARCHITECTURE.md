@@ -377,3 +377,55 @@ There are two cache levels on purpose: RTK Query caches what each screen asked f
 ### Testing
 
 `testing/discoverFixtures.ts` provides a fixture world in the v5 wire format, `stubDiscoverApis` (scripts both APIs on a `FakeHttpClientFactory`) and stateful repository fakes. Stores for tests come from `createTestStore` (used by `renderWithProviders`); `jest.afterEnv.ts` resets them after each test so RTK Query's cache-expiry timers don't keep Jest running.
+
+## 12. Weather
+
+`features/weather/` provides forecasts from [Open-Meteo](https://open-meteo.com/en/docs) for any position, plus the device's position (expo-location). It follows the Discover layout (§ 11): use cases behind RTK Query, with caching split between memory and device.
+
+### Layers
+
+```
+presentation  WeatherForecastView (full screen) · WeatherSummaryCard · DeviceWeatherCard / DeviceWeatherView
+              useWeather(coordinates) · useDeviceWeather() · weatherApi (RTK Query) · format.ts · units.ts
+domain        Coordinates (validate, round) · WeatherForecast / WeatherReport · weatherCodes (WMO → condition)
+              weatherCalculations (now, next 24 h, days, daylight, range bars, units, time zones)
+              GetWeatherForecast (cache policy) · GetDeviceLocation · Get/RequestLocationPermission
+data          OpenMeteoWeatherRepository (HttpClient + zod DTOs + mappers) · StorageWeatherCache (KeyValueStore)
+              ExpoDeviceLocationService (expo-location adapter, injectable for tests)
+```
+
+Weather appears on the destination page (`DestinationWeatherCard`, linking to `destinations/[id]/weather`) and on the trip page. Trips don't have destinations yet (feature 4), so the trip page shows the weather where the device is (`trips/[id]/weather` for the full forecast). It will switch to the trip's coordinates through the same `useWeather` hook.
+
+### Requests and time zones
+
+One request per position: `current`, `hourly` and `daily` variables, with `timezone=auto` and `timeformat=unixtime`. Every time is an instant, and the response's IANA zone and offset become `ForecastTimeZone`. The UI formats times in the destination's zone (`formatInZone`: the IANA zone when the engine knows it, otherwise the fixed offset). "Today" is the date at the destination (`localDateKey`), and a note shows the zone when it differs from the device's. Units stay metric on the wire. The UI converts to °F/mph from the device region (`expo-localization`), so one cached forecast serves every unit.
+
+### Caching
+
+| Level                         | What                                      | Lifetime                                                             |
+| ----------------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
+| RTK Query (`weatherApi`)      | Report per rounded position               | 15 min after the last subscriber; de-duplicates card + screen        |
+| `GetWeatherForecast` + device | Last 6 forecasts (`weather.forecasts.v1`) | Used without a request for 15 min; as an offline fallback up to 72 h |
+
+Coordinates are rounded to 2 decimals (~1 km, finer than the weather models' resolution) before they become cache keys or leave the device. `refetch()` (pull to refresh, "try again") sets RTK Query's `forced`, which skips the fresh saved copy. When a saved copy is shown because the network failed, `WeatherReport.fallbackReason` says why, the UI shows its age, and `useWeather` refetches when connectivity returns. "Now" is taken from the forecast hour when `current` is older than an hour, so an old saved forecast doesn't show stale conditions as current. The summary is re-derived once a minute and on return to the foreground, so a screen left open overnight shows the new day. `StorageWeatherCache` serialises its saves, so forecasts downloaded at the same time don't overwrite each other.
+
+### Edge cases
+
+| Situation                                             | Behaviour                                                                                          |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Out-of-range, non-finite, or 0,0 coordinates          | `invalidLocation`; no request                                                                      |
+| Destination without coordinates                       | `locationUnavailable`; "we don't know exactly where this place is", no retry                       |
+| Place whose Wikipedia summary failed to load          | That error, with a retry that refetches the destination (not the "no coordinates" message)         |
+| Screen left open for hours / app back from background | "Now", "Today" and the age move on (`useNow`); a forecast older than 15 min is downloaded again    |
+| Country                                               | Forecast for REST Countries' reference point, labelled "centre of …"                               |
+| Location permission not asked / denied / blocked      | Explanation first, then the prompt on tap; blocked shows "Open Settings"; re-checked on foreground |
+| Location services off, no fix in 15 s                 | `locationUnavailable` with retry; a last-known fix under 10 min old is used instantly              |
+| Timeout / 5xx / 429                                   | One retry (10 s per attempt); then the saved forecast (marked) or an error with retry              |
+| 400 `{ error, reason }` / 200 with an error body      | `badRequest` / `parse`; never hidden behind saved data (`badRequest`)                              |
+| Missing or malformed values                           | That value is `null` and shown as "—" / "not available"; arrays stay aligned with `time`           |
+| Polar day / night (sunrise = sunset = midnight)       | Classified by `daylight_duration`; "Sun up all day" / "No sunrise today"                           |
+| Unknown WMO code                                      | `unknown` condition with a neutral icon, never a guess                                             |
+
+### Testing
+
+`testing/weatherFixtures.ts` builds Open-Meteo responses in the wire format around `WEATHER_NOW` for any offset, and `stubWeatherApi` scripts them. `FakeDeviceLocationService` is the default `deviceLocationService` in `createTestDependencies` (permission starts `undetermined`). Mapping and calculations are unit tested, including a captured Svalbard polar-night response. The use case's cache policy is tested with an in-memory cache, the repository with both `FakeHttpClient` and the real client over `createMockAxiosAdapter` (timeouts, retries, error bodies), and the screens through `renderWithProviders`.

@@ -30,6 +30,7 @@ import {
 import { countryDestinationId } from '../../domain/DestinationId';
 import { CATEGORY_ICONS } from '../categoryIcons';
 import { DestinationImage } from '../components/DestinationImage';
+import { DestinationWeatherCard } from '../components/DestinationWeatherCard';
 import { formatCallingCode, formatNumber, regionLabel } from '../format';
 import { useDestinationDetails } from '../hooks/useDestinationDetails';
 
@@ -107,6 +108,8 @@ function CountryDetails({
           {country.subregion ? <AppBadge label={country.subregion} /> : null}
         </View>
       </View>
+
+      <DestinationWeatherCard details={details} onRetryDetails={onRetry} refreshingDetails={refreshing} />
 
       <InfoCard title={t('destination.facts')}>
         <Fact icon="location" label={t('destination.capital')} value={country.capitals.join(', ') || notAvailable} />
@@ -204,6 +207,8 @@ function PlaceDetails({ details, onRetry, refreshing }: { readonly details: Plac
           </View>
         ) : null}
       </View>
+
+      <DestinationWeatherCard details={details} onRetryDetails={onRetry} refreshingDetails={refreshing} />
 
       <InfoCard title={t('destination.locatedIn')}>
         {country ? (

@@ -81,7 +81,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 0.2 | Architecture: DI container, use cases, HTTP layer (axios), error model, logging, connectivity         | Done    |
 | 0.3 | Navigation and authentication: drawer + tabs, onboarding, DummyJSON sign-in, sessions, deep links     | Done    |
 | 1   | Destination discovery and search: Explore feed, search with filters and history, destination details  | Done    |
-| 2   | Weather                                                                                               | Planned |
+| 2   | Weather: Open-Meteo forecasts on destinations and trips, full forecast screen, offline copy           | Done    |
 | 3   | Nearby places and map                                                                                 | Planned |
 | 4   | Trips and itineraries                                                                                 | Planned |
 | 5   | Expense tracking                                                                                      | Planned |
@@ -91,11 +91,12 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 
 ## Third-party data and attribution
 
-| API                                                                                         | Used for                                      | Notes                                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [DummyJSON](https://dummyjson.com/docs/auth)                                                | Sign-in, token refresh, profile, demo sign-up | Public demo API, no key. Only its sample users can sign in (e.g. `emilys` / `emilyspass`). `POST /users/add` echoes new users but stores nothing, which the app says up front.                                                                |
-| [REST Countries v5](https://restcountries.com/docs/countries)                               | Country catalogue, details, flags             | API key (Bearer). Free plan: 100 objects per page, 20 requests per 10 s. v3.1 and older are retired. The app caches the catalogue and details in memory and searches locally, so typing never calls the API. Attributed on each country page. |
-| [Wikipedia](https://en.wikipedia.org/api/rest_v1/) (Wikimedia REST + MediaWiki REST search) | Descriptions, photos, city and place search   | No key. Text is CC BY-SA 4.0: the destination page shows the attribution and links to the article. Requests identify the app with `Api-User-Agent`.                                                                                           |
+| API                                                                                         | Used for                                      | Notes                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [DummyJSON](https://dummyjson.com/docs/auth)                                                | Sign-in, token refresh, profile, demo sign-up | Public demo API, no key. Only its sample users can sign in (e.g. `emilys` / `emilyspass`). `POST /users/add` echoes new users but stores nothing, which the app says up front.                                                                                                        |
+| [REST Countries v5](https://restcountries.com/docs/countries)                               | Country catalogue, details, flags             | API key (Bearer). Free plan: 100 objects per page, 20 requests per 10 s. v3.1 and older are retired. The app caches the catalogue and details in memory and searches locally, so typing never calls the API. Attributed on each country page.                                         |
+| [Wikipedia](https://en.wikipedia.org/api/rest_v1/) (Wikimedia REST + MediaWiki REST search) | Descriptions, photos, city and place search   | No key. Text is CC BY-SA 4.0: the destination page shows the attribution and links to the article. Requests identify the app with `Api-User-Agent`.                                                                                                                                   |
+| [Open-Meteo](https://open-meteo.com/en/docs)                                                | Current weather, hourly and 7-day forecasts   | No key. Free for non-commercial use (10 000 calls/day); a commercial launch needs an API plan. Data is CC BY 4.0: every weather card and screen shows "Weather data by Open-Meteo.com". Forecasts are cached per ~1 km cell (in memory 15 min, on device up to 72 h for offline use). |
 
 When a feature adds an API, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
 
@@ -103,12 +104,14 @@ When a feature adds an API, list it here with its licence, attribution requireme
 
 The `wanderly://` scheme opens:
 
-| Link                                           | Screen         |
-| ---------------------------------------------- | -------------- |
-| `wanderly://destinations/<destinationId>`      | Destination    |
-| `wanderly://search`                            | Search         |
-| `wanderly://trips/<tripId>`                    | Trip           |
-| `wanderly://trips/<tripId>/itinerary/<itemId>` | Itinerary item |
+| Link                                              | Screen                               |
+| ------------------------------------------------- | ------------------------------------ |
+| `wanderly://destinations/<destinationId>`         | Destination                          |
+| `wanderly://search`                               | Search                               |
+| `wanderly://trips/<tripId>`                       | Trip                                 |
+| `wanderly://trips/<tripId>/itinerary/<itemId>`    | Itinerary item                       |
+| `wanderly://destinations/<destinationId>/weather` | Destination forecast                 |
+| `wanderly://trips/<tripId>/weather`               | Forecast where you are (from a trip) |
 
 Destination ids are `country-<alpha-2>` (`country-pt`), a curated slug (`kyoto`), or `place-<base64url>` for any other Wikipedia place (the payload is `<alpha-2>~<article title>`).
 

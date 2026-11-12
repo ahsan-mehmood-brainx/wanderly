@@ -28,6 +28,16 @@ describe('resolveDeepLink', () => {
     );
   });
 
+  it('opens the weather for a destination or a trip, validating ids', () => {
+    expect(resolveDeepLink('wanderly://destinations/country-pt/weather')).toEqual(
+      routes.destinationWeather('country-pt'),
+    );
+    expect(resolveDeepLink('wanderly://trips/t-42/weather')).toEqual(routes.tripWeather('t-42'));
+    expect(resolveDeepLink('/destinations/place-a.b/weather')).toBeNull();
+    expect(resolveDeepLink('/trips/a%20b/weather')).toBeNull();
+    expect(resolveDeepLink('/destinations/country-pt/forecast')).toBeNull();
+  });
+
   it('opens top-level destinations', () => {
     expect(resolveDeepLink('/saved')).toBe(routes.savedPlaces);
   });

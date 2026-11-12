@@ -150,3 +150,40 @@ export function toRecentDestination(details: DestinationDetails, viewedAt: numbe
     viewedAt,
   };
 }
+
+/** Where to get weather for a destination, and how precise that is. */
+export interface DestinationWeatherPlace {
+  readonly name: string;
+  /** `null` when the sources don't say where the place is (some Wikipedia articles, some territories). */
+  readonly coordinates: Coordinates | null;
+  /**
+   * Why the position couldn't be *loaded* (the place's Wikipedia summary failed:
+   * offline, a server error…). Unlike a place with no known position, trying
+   * again can help. `null` when nothing failed.
+   */
+  readonly coordinatesError: AppErrorKind | null;
+  /**
+   * `country`: the coordinates are the country's reference point (its rough centre), not a city,
+   * so the UI says so. `place`: the place's own coordinates.
+   */
+  readonly precision: 'country' | 'place';
+}
+
+/** Countries use REST Countries' reference point; cities and places use their Wikipedia article's coordinates. */
+export function destinationWeatherPlace(details: DestinationDetails): DestinationWeatherPlace {
+  if (details.kind === 'country') {
+    return {
+      name: details.country.name,
+      coordinates: details.country.coordinates,
+      coordinatesError: null,
+      precision: 'country',
+    };
+  }
+  const { description } = details;
+  return {
+    name: details.name,
+    coordinates: description.status === 'available' ? (description.summary.coordinates ?? null) : null,
+    coordinatesError: description.status === 'failed' ? description.errorKind : null,
+    precision: 'place',
+  };
+}

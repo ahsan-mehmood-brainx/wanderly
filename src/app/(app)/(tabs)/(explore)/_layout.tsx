@@ -14,6 +14,7 @@ export default function ExploreStackLayout() {
       <Stack.Screen name="search" options={{ title: t('search.title') }} />
       {/* The screen replaces the title with the destination's name once it has loaded. */}
       <Stack.Screen name="destinations/[destinationId]" options={{ title: t('destination.title') }} />
+      <Stack.Screen name="destinations/[destinationId]/weather" options={{ title: t('weather.title') }} />
     </Stack>
   );
 }
