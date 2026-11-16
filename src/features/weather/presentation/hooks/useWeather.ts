@@ -49,7 +49,11 @@ const PERMANENT_KINDS: ReadonlySet<AppErrorKind> = new Set(['invalidLocation', '
  *   clock, in the forecast location's time zone, and move on as time passes
  *   (see `useNow`): a screen left open overnight shows today, not yesterday.
  * - Back in the foreground with a forecast older than the use case's fresh
- *   window, a new one is downloaded.
+ *   window, or with a failure that trying again can fix, a new one is downloaded.
+ *   This check doesn't wait for `useDeviceWeather` to re-read the position. If
+ *   the traveller has moved, the stale forecast for the old place is downloaded
+ *   (and saved) and then replaced by the new place's forecast. That's one extra
+ *   request per return, accepted to keep the two refresh paths independent.
  */
 export function useWeather(location: Partial<Coordinates> | null | undefined): WeatherState {
   const { clock } = useDependencies();
@@ -67,15 +71,19 @@ export function useWeather(location: Partial<Coordinates> | null | undefined): W
   const { refetch } = query;
   const now = useNow(clock);
 
-  // Back in the foreground after a while: the forecast on screen may be hours old.
+  // Back in the foreground after a while: the forecast on screen may be hours old,
+  // or the failure on screen may have been a passing one.
   const fetchedAt = report?.forecast.fetchedAt;
+  const retryOnReturn = valid.ok && queryError !== null && !PERMANENT_KINDS.has(queryError);
   useEffect(() => {
-    if (fetchedAt === undefined) return undefined;
+    if (fetchedAt === undefined && !retryOnReturn) return undefined;
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && clock.now() - fetchedAt >= DEFAULT_WEATHER_CACHE_POLICY.freshForMs) void refetch();
+      if (state !== 'active') return;
+      const stale = fetchedAt !== undefined && clock.now() - fetchedAt >= DEFAULT_WEATHER_CACHE_POLICY.freshForMs;
+      if (retryOnReturn || stale) void refetch();
     });
     return () => subscription.remove();
-  }, [fetchedAt, clock, refetch]);
+  }, [fetchedAt, retryOnReturn, clock, refetch]);
 
   // Back online after showing a saved forecast (or a connectivity error): fetch a live one.
   const { isOffline } = useConnectivity();
