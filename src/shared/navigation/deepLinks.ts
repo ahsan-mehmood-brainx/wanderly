@@ -44,6 +44,7 @@ const TOP_LEVEL: Readonly<Record<string, Href>> = {
   '/budget': routes.budget,
   '/profile': routes.profile,
   '/saved': routes.savedPlaces,
+  '/map': routes.map,
 };
 
 /**

@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { routes } from '@/shared/navigation/routes';
-import { AppChip, AppIcon, AppText, Screen } from '@/shared/ui';
+import { AppChip, AppIcon, AppIconButton, AppText, Screen } from '@/shared/ui';
 
 import { DESTINATION_CATEGORIES } from '../../domain/Destination';
 import { type Recommendation } from '../../domain/usecases/discoverFeed';
@@ -55,7 +55,18 @@ export function DiscoverScreen({ now = systemNow }: DiscoverScreenProps) {
         <AppText color="textSecondary">{t('discover.subtitle')}</AppText>
       </View>
 
-      <SearchLauncher onPress={() => router.push(routes.search())} />
+      <View style={[styles.searchRow, { gap: spacing.sm }]}>
+        <SearchLauncher onPress={() => router.push(routes.search())} />
+        {/* react-native-maps has no web support, so the map is offered on iOS and Android only. */}
+        {Platform.OS !== 'web' ? (
+          <AppIconButton
+            icon="map"
+            variant="tonal"
+            accessibilityLabel={t('discover.openMap')}
+            onPress={() => router.push(routes.map)}
+          />
+        ) : null}
+      </View>
 
       <Section title={t('discover.sections.categories')}>
         <View style={[styles.wrap, { gap: spacing.sm }]}>
@@ -183,6 +194,7 @@ function SearchLauncher({ onPress }: { readonly onPress: () => void }) {
       style={({ pressed }) => [
         styles.launcher,
         {
+          flex: 1,
           minHeight: sizes.input,
           gap: spacing.sm,
           paddingHorizontal: spacing.lg,
@@ -203,6 +215,7 @@ function SearchLauncher({ onPress }: { readonly onPress: () => void }) {
 
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  searchRow: { flexDirection: 'row', alignItems: 'center' },
   launcher: { flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   launcherText: { flex: 1 },
 });

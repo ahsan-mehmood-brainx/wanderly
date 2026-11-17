@@ -1,6 +1,6 @@
 import { act, screen, userEvent, within } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 
 import { signIn } from '@/features/auth/presentation/state/authSlice';
 import { routes } from '@/shared/navigation/routes';
@@ -100,6 +100,35 @@ describe('DiscoverScreen', () => {
 
     await user.press(screen.getByRole('button', { name: 'Beaches' }));
     expect(router.push).toHaveBeenLastCalledWith(routes.search({ category: 'beach' }));
+  });
+
+  it('opens the explore map from the Map button next to search', async () => {
+    const { user } = await setup();
+
+    await user.press(await screen.findByRole('button', { name: 'Open map' }));
+
+    expect(router.push).toHaveBeenLastCalledWith(routes.map);
+  });
+
+  it('shows the Map button on Android but not on the web, where there is no map', async () => {
+    const android = jest.replaceProperty(Platform, 'OS', 'android');
+    try {
+      await setup();
+      expect(await screen.findByRole('button', { name: 'Open map' })).toBeOnTheScreen();
+      screen.unmount();
+    } finally {
+      android.restore();
+    }
+
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      await setup();
+
+      expect(await screen.findByRole('search', { name: 'Search countries, cities and places' })).toBeOnTheScreen();
+      expect(screen.queryByRole('button', { name: 'Open map' })).toBeNull();
+    } finally {
+      os.restore();
+    }
   });
 
   it('opens a destination from a card', async () => {

@@ -82,7 +82,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 0.3 | Navigation and authentication: drawer + tabs, onboarding, DummyJSON sign-in, sessions, deep links     | Done    |
 | 1   | Destination discovery and search: Explore feed, search with filters and history, destination details  | Done    |
 | 2   | Weather: Open-Meteo forecasts on destinations and trips, full forecast screen, offline copy           | Done    |
-| 3   | Nearby places and map                                                                                 | Planned |
+| 3   | Nearby places and map: OpenStreetMap places and search, filters, pins, directions                     | Done    |
 | 4   | Trips and itineraries                                                                                 | Planned |
 | 5   | Expense tracking                                                                                      | Planned |
 | 6   | Favourites                                                                                            | Planned |
@@ -98,7 +98,12 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | [Wikipedia](https://en.wikipedia.org/api/rest_v1/) (Wikimedia REST + MediaWiki REST search) | Descriptions, photos, city and place search   | No key. Text is CC BY-SA 4.0: the destination page shows the attribution and links to the article. Requests identify the app with `Api-User-Agent`.                                                                                                                                   |
 | [Open-Meteo](https://open-meteo.com/en/docs)                                                | Current weather, hourly and 7-day forecasts   | No key. Free for non-commercial use (10 000 calls/day); a commercial launch needs an API plan. Data is CC BY 4.0: every weather card and screen shows "Weather data by Open-Meteo.com". Forecasts are cached per ~1 km cell (in memory 15 min, on device up to 72 h for offline use). |
 
+| [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) (OpenStreetMap) | Place search on the map | No key. Usage policy: at most 1 request per second, an identifying `User-Agent`, no autocomplete. The app searches only on submit, spaces requests 1 s apart, caches results for 30 min and cools down after a 429. Data is ODbL: the map shows "© OpenStreetMap contributors". |
+| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (overpass-api.de) | Nearby attractions, restaurants, hotels, museums, parks and landmarks | No key. Fair use: one query at a time. The app sends one query per centre (1.5 km, all categories), at least 2 s apart, caches it for 10 min, filters categories on the device and cools down after a 429. ODbL, attributed on the map. Heavy production traffic needs a self-hosted or commercial endpoint. |
+
 When a feature adds an API, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
+
+The map itself is the platform's own (Apple Maps on iOS, Google Maps on Android, through react-native-maps). Android builds need a Google Maps API key in `android.config.googleMaps.apiKey` before the map can show. Until one is configured, Android development and production builds show "Map couldn't load" instead of mounting the map; Expo Go works because it bundles its own key.
 
 ## Deep links
 
@@ -112,6 +117,7 @@ The `wanderly://` scheme opens:
 | `wanderly://trips/<tripId>/itinerary/<itemId>`    | Itinerary item                       |
 | `wanderly://destinations/<destinationId>/weather` | Destination forecast                 |
 | `wanderly://trips/<tripId>/weather`               | Forecast where you are (from a trip) |
+| `wanderly://map`                                  | Explore map (iOS and Android)        |
 
 Destination ids are `country-<alpha-2>` (`country-pt`), a curated slug (`kyoto`), or `place-<base64url>` for any other Wikipedia place (the payload is `<alpha-2>~<article title>`).
 

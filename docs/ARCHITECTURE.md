@@ -431,3 +431,66 @@ Back from the background (or with the screen left open for hours), "Now", "Today
 ### Testing
 
 `testing/weatherFixtures.ts` builds Open-Meteo responses in the wire format around `WEATHER_NOW` for any offset, and `stubWeatherApi` scripts them. `FakeDeviceLocationService` is the default `deviceLocationService` in `createTestDependencies` (permission starts `undetermined`). Mapping and calculations are unit tested, including a captured Svalbard polar-night response. The use case's cache policy is tested with an in-memory cache, the repository with both `FakeHttpClient` and the real client over `createMockAxiosAdapter` (timeouts, retries, error bodies), and the screens through `renderWithProviders`.
+
+## 13. Explore map and nearby places
+
+`features/map/` is the `/map` screen in the Explore stack (Map button next to search on Discover, deep link `wanderly://map`). The base map is the platform's own (Apple Maps on iOS, Google Maps on Android) through react-native-maps. OpenStreetMap is the data source for places (Overpass) and search (Nominatim), credited on the map with "© OpenStreetMap contributors".
+
+### Layers
+
+```
+presentation  ExploreMapScreen (+ .web.tsx: "Map available in the mobile app") · MapCanvas (the only react-native-maps import)
+              PlaceSheet · CategoryChips · useExploreMap() · useMapLocation() · mapApi (RTK Query) · mapSlice (pins)
+              mapAvailability (Android without a Google Maps key never mounts MapView) · format.ts (m/km or ft/mi)
+domain        Place · LocationSearchResult · CustomMarker · geo (checkCoordinates, roundTo, haversine, pin label)
+              filterPlaces · buildDirectionsUrls · SearchPlaces · GetNearbyPlaces · GetCurrentLocation
+              Check/RequestMapLocationPermission · Load/Add/RemoveCustomMarker
+data          ExpoLocationService (LocationService) · NominatimGeocodingService (GeocodingService)
+              OverpassPlacesApiService (PlacesApiService) · OsmPlacesRepository (PlacesRepository, core/cache MemoryCache)
+              RequestThrottle · overpassQuery (query + category table) · mappers · StorageCustomMarkerRepository
+```
+
+The map has its own `LocationService` instead of reusing weather's adapter: it needs street-level accuracy (`Accuracy.Balanced`, last-known fix under 2 min / 100 m, full precision) and reports location services being off as its own kind, `locationServicesDisabled`.
+
+### Request policy
+
+Both services are run by volunteers, so the data layer enforces their usage policies in one place:
+
+- Every request sends `User-Agent: Wanderly/1.0 (com.wanderly.app)`.
+- Nominatim: only on submit (no autocomplete), a trimmed query of 2 to 200 characters, `limit=5`, at least 1 s between requests.
+- Overpass: one GET `/interpreter?data=` per centre, covering all six categories (`out center 40` each, named elements within 1.5 km). Requests run one at a time, at least 2 s apart. Category chips filter on the device, so toggling them never sends a request.
+- Known limitation: Overpass applies `out center 40` in element id order, not by distance. In a dense area (e.g. central Paris, with hundreds of restaurants within 1.5 km) a category's 40 places are spread across the whole circle, and the ones right next to the user can be missing. The app sorts what it gets by distance, so the list is "nearest of the loaded places", not the true nearest. Fixing this needs a smaller radius or a second, wider query, which the one-request-per-centre policy above rules out for now.
+- No HTTP-level retry (`retry: noRetry` on both APIs): a retry would run inside one throttle slot, skipping the spacing and answering a 429 before the cooldown starts. Try again and the back-online reload go through the throttle.
+- A 429 starts a cooldown (`Retry-After`, else 30 s). Until it ends that service answers `rateLimited` without a request.
+- The centre is rounded to 3 decimals (~110 m) before it leaves the device. It is the cache key too. `GetNearbyPlaces` then measures each place's distance again from the exact position, so distances and order are not off by the rounding.
+
+| Level                 | What                               | Lifetime                                    |
+| --------------------- | ---------------------------------- | ------------------------------------------- |
+| `OsmPlacesRepository` | Places per rounded centre          | 10 min, 30 entries; failures are not cached |
+| `OsmPlacesRepository` | Search hits per language + query   | 30 min, 30 entries                          |
+| RTK Query (`mapApi`)  | Position / places / search results | 2 / 10 / 5 min after the screen goes away   |
+
+### Edge cases
+
+| Situation                                       | Behaviour                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Permission not asked / denied / blocked         | Explanation first, prompt on tap (a double tap asks once); blocked shows "Open Settings"         |
+| Back from Settings                              | Permission re-checked on foreground; a failed position is read again                             |
+| Back in the foreground, or "My location"        | A position older than 2 min is read again; the camera and nearby places follow the new one       |
+| Position known before the map is ready          | The camera move waits for `onMapReady` (Android's Google map drops earlier moves)                |
+| Location services off                           | `locationServicesDisabled`: "Location services are off" with Try again; no places request        |
+| No fix in 15 s, native error, NaN / 0,0 / range | `locationUnavailable`: "We couldn't find your location" with Try again; no places request        |
+| Invalid centre                                  | `invalidLocation` from `GetNearbyPlaces`; no request                                             |
+| No places / every chip off                      | "No places found nearby" / "Select at least one category"                                        |
+| Offline, network, timeout, 429, 5xx, remark     | The `errors.kind.*` message with Try again; places already shown stay; reload when back online   |
+| Pins                                            | Long press adds one (max 50), saved under `map.customMarkers.v1`; corrupt entries dropped singly |
+| Directions                                      | Apple Maps (iOS) or `geo:` (Android), then Google Maps on the web; "Couldn't open a maps app"    |
+| Android without a Google Maps key (not Expo Go) | MapView is never mounted (the SDK would crash): "Map couldn't load"                              |
+| `onMapReady` not within 15 s                    | "Map couldn't load" with Try again, which remounts the map                                       |
+| Web                                             | "Map available in the mobile app"; the Discover Map button is hidden                             |
+
+### Testing
+
+`testing/mapFixtures.ts` holds Overpass and Nominatim responses in the wire format and `stubOverpass` / `stubNominatim`. `FakeLocationService` is the default `mapLocationService` in `createTestDependencies` (permission starts `undetermined`). `jest.setup.ts` mocks react-native-maps with plain Views that keep their props, so tests fire `longPress`, `mapReady` and marker presses directly. The throttle and services are tested with fake timers; the screen through `renderWithProviders` with a `ManualClock`, so tests move past the request spacing explicitly.
+
+`jest.afterEnv.ts` installs `testing/syncSafeAct.ts`: React Native Testing Library 14 runs every `act()` asynchronously, so a `fireEvent` or `unmount` that isn't awaited overlaps the next `act()` and React stops flushing for the rest of the file. Synchronous callbacks now use React's synchronous `act()` (the RNTL 13 behaviour). It also clears recorded mock calls after each test, because preset mocks such as `Linking.openURL` are reused by `jest.spyOn` and Jest 30's `restoreAllMocks` keeps their calls.
