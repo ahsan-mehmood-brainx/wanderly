@@ -11,7 +11,14 @@ import { apiSuccess, type FakeHttpClient, FakeHttpClientFactory } from '@/testin
 import { FAKE_MAP_POSITION, FakeLocationService } from '@/testing/FakeLocationService';
 import { InMemoryKeyValueStore } from '@/testing/InMemoryKeyValueStore';
 import { ManualClock } from '@/testing/ManualClock';
-import { overpassNode, overpassResponse, PARIS_ELEMENTS, stubNominatim, stubOverpass } from '@/testing/mapFixtures';
+import {
+  overpassNode,
+  overpassResponse,
+  PARIS_ELEMENTS,
+  RESTAURANT,
+  stubNominatim,
+  stubOverpass,
+} from '@/testing/mapFixtures';
 import { renderWithProviders } from '@/testing/renderWithProviders';
 
 import { NOMINATIM_SEARCH_PATH, OVERPASS_INTERPRETER_PATH } from '../../data/osmApis';
@@ -246,6 +253,27 @@ describe('ExploreMapScreen filters', () => {
     expect(screen.getByText('Select at least one category')).toBeOnTheScreen();
     expect(placeMarkers()).toHaveLength(0);
     expect(overpass.requests).toHaveLength(1);
+  });
+
+  it('AC6 says when no loaded place is of the selected types', async () => {
+    const { overpass } = await setup({
+      configure: ({ overpass }) =>
+        overpass.on('GET', OVERPASS_INTERPRETER_PATH, apiSuccess(overpassResponse([RESTAURANT]))),
+    });
+    const user = userEvent.setup();
+    await screen.findByTestId(RESTAURANT_MARKER);
+    expect(screen.queryByText('No places of the selected types nearby')).toBeNull();
+
+    await user.press(screen.getByRole('button', { name: 'Restaurants' }));
+
+    expect(screen.getByText('No places of the selected types nearby')).toBeOnTheScreen();
+    expect(placeMarkers()).toHaveLength(0);
+    expect(overpass.requests).toHaveLength(1);
+
+    await user.press(screen.getByRole('button', { name: 'Restaurants' }));
+
+    expect(screen.getByTestId(RESTAURANT_MARKER)).toBeOnTheScreen();
+    expect(screen.queryByText('No places of the selected types nearby')).toBeNull();
   });
 
   it('AC6 says when the area has no places at all', async () => {

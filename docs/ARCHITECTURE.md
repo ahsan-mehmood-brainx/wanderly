@@ -472,22 +472,22 @@ Both services are run by volunteers, so the data layer enforces their usage poli
 
 ### Edge cases
 
-| Situation                                       | Behaviour                                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Permission not asked / denied / blocked         | Explanation first, prompt on tap (a double tap asks once); blocked shows "Open Settings"         |
-| Back from Settings                              | Permission re-checked on foreground; a failed position is read again                             |
-| Back in the foreground, or "My location"        | A position older than 2 min is read again; the camera and nearby places follow the new one       |
-| Position known before the map is ready          | The camera move waits for `onMapReady` (Android's Google map drops earlier moves)                |
-| Location services off                           | `locationServicesDisabled`: "Location services are off" with Try again; no places request        |
-| No fix in 15 s, native error, NaN / 0,0 / range | `locationUnavailable`: "We couldn't find your location" with Try again; no places request        |
-| Invalid centre                                  | `invalidLocation` from `GetNearbyPlaces`; no request                                             |
-| No places / every chip off                      | "No places found nearby" / "Select at least one category"                                        |
-| Offline, network, timeout, 429, 5xx, remark     | The `errors.kind.*` message with Try again; places already shown stay; reload when back online   |
-| Pins                                            | Long press adds one (max 50), saved under `map.customMarkers.v1`; corrupt entries dropped singly |
-| Directions                                      | Apple Maps (iOS) or `geo:` (Android), then Google Maps on the web; "Couldn't open a maps app"    |
-| Android without a Google Maps key (not Expo Go) | MapView is never mounted (the SDK would crash): "Map couldn't load"                              |
-| `onMapReady` not within 15 s                    | "Map couldn't load" with Try again, which remounts the map                                       |
-| Web                                             | "Map available in the mobile app"; the Discover Map button is hidden                             |
+| Situation                                       | Behaviour                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Permission not asked / denied / blocked         | Explanation first, prompt on tap (a double tap asks once); blocked shows "Open Settings"             |
+| Back from Settings                              | Permission re-checked on foreground; a failed position is read again                                 |
+| Back in the foreground, or "My location"        | A position older than 2 min is read again; the camera and nearby places follow the new one           |
+| Position known before the map is ready          | The camera move waits for `onMapReady` (Android's Google map drops earlier moves)                    |
+| Location services off                           | `locationServicesDisabled`: "Location services are off" with Try again; no places request            |
+| No fix in 15 s, native error, NaN / 0,0 / range | `locationUnavailable`: "We couldn't find your location" with Try again; no places request            |
+| Invalid centre                                  | `invalidLocation` from `GetNearbyPlaces`; no request                                                 |
+| No places / every chip off / no type matches    | "No places found nearby" / "Select at least one category" / "No places of the selected types nearby" |
+| Offline, network, timeout, 429, 5xx, remark     | The `errors.kind.*` message with Try again; places already shown stay; reload when back online       |
+| Pins                                            | Long press adds one (max 50), saved under `map.customMarkers.v1`; corrupt entries dropped singly     |
+| Directions                                      | Apple Maps (iOS) or `geo:` (Android), then Google Maps on the web; "Couldn't open a maps app"        |
+| Android without a Google Maps key (not Expo Go) | MapView is never mounted (the SDK would crash): "Map couldn't load"                                  |
+| `onMapReady` not within 15 s                    | "Map couldn't load" with Try again, which remounts the map                                           |
+| Web                                             | "Map available in the mobile app"; the Discover Map button is hidden                                 |
 
 ### Testing
 

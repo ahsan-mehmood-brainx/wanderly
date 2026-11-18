@@ -120,6 +120,12 @@ function PlacesStatus({ state }: { readonly state: ExploreMapState['placesState'
           <InlineMessage tone="info" icon="filter" message={t('map.noCategories')} />
         </Panel>
       );
+    case 'noMatches':
+      return (
+        <Panel>
+          <InlineMessage tone="info" icon="filter" message={t('map.noMatchingPlaces')} />
+        </Panel>
+      );
     case 'error':
       return (
         <Panel>

@@ -474,6 +474,7 @@ export const en = {
     loadingPlaces: 'Finding places nearby',
     noPlaces: 'No places found nearby',
     noCategories: 'Select at least one category',
+    noMatchingPlaces: 'No places of the selected types nearby',
     permission: {
       prompt:
         'Allow location access to see places around you. Your position stays on this device; only an area of about 100 m is used to look up places.',

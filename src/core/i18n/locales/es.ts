@@ -479,6 +479,7 @@ export const es: TranslationResources = {
     loadingPlaces: 'Buscando lugares cercanos',
     noPlaces: 'No hay lugares cerca',
     noCategories: 'Selecciona al menos una categoría',
+    noMatchingPlaces: 'No hay lugares de los tipos seleccionados cerca',
     permission: {
       prompt:
         'Permite el acceso a la ubicación para ver lugares a tu alrededor. Tu posición se queda en este dispositivo; solo se usa una zona de unos 100 m para buscar lugares.',

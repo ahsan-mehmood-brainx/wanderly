@@ -44,6 +44,8 @@ export type PlacesState =
   | { readonly status: 'ready' }
   | { readonly status: 'empty' }
   | { readonly status: 'noCategories' }
+  /** Places loaded, but none of the selected categories. */
+  | { readonly status: 'noMatches' }
   | { readonly status: 'error'; readonly errorKind: AppErrorKind; readonly retry: () => void };
 
 export type SearchState =
@@ -226,8 +228,9 @@ export function useExploreMap(): ExploreMapState {
     if (nearby.isFetching || !nearby.currentData) return { status: 'loading' };
     if (nearby.currentData.length === 0) return { status: 'empty' };
     if (categories.length === 0) return { status: 'noCategories' };
+    if (places.length === 0) return { status: 'noMatches' };
     return { status: 'ready' };
-  }, [center, placesErrorKind, refetchPlaces, nearby.isFetching, nearby.currentData, categories.length]);
+  }, [center, placesErrorKind, refetchPlaces, nearby.isFetching, nearby.currentData, categories.length, places.length]);
 
   // Back online after a failed load: try again without waiting for a tap.
   const { isOffline } = useConnectivity();
