@@ -23,7 +23,8 @@ export function apiFailure(error: ApiError): ApiResult<never> {
 /**
  * In-memory HttpClient for testing repositories and use cases without any network.
  *
- * - Stub responses per `METHOD path`; unstubbed requests fail with `notFound`.
+ * - Stub responses per `METHOD path`; unstubbed requests go to the `otherwise` responder
+ *   if one is set, and otherwise fail with `notFound`.
  * - Applies the request's `schema` exactly like the real client, so a DTO that
  *   doesn't match the stubbed payload fails the test with a `parse` error.
  * - Honours an already-aborted `signal` with a `cancelled` error.
@@ -32,9 +33,16 @@ export function apiFailure(error: ApiError): ApiResult<never> {
 export class FakeHttpClient extends BaseHttpClient {
   readonly requests: RequestConfig<unknown>[] = [];
   private readonly responders = new Map<string, Responder>();
+  private fallback: ((request: RequestConfig<unknown>) => ApiResult<unknown>) | null = null;
 
   on(method: HttpMethod, path: string, responder: Responder): this {
     this.responders.set(`${method} ${path}`, responder);
+    return this;
+  }
+
+  /** Answers requests that have no `on(...)` stub, e.g. to serve a whole family of paths. */
+  otherwise(responder: (request: RequestConfig<unknown>) => ApiResult<unknown>): this {
+    this.fallback = responder;
     return this;
   }
 
@@ -45,7 +53,7 @@ export class FakeHttpClient extends BaseHttpClient {
 
     if (config.signal?.aborted) return err(new ApiError('cancelled', 'Request was cancelled', context));
 
-    const responder = this.responders.get(`${config.method} ${config.path}`);
+    const responder = this.responders.get(`${config.method} ${config.path}`) ?? this.fallback;
     if (!responder)
       return err(new ApiError('notFound', `No fake response for ${config.method} ${config.path}`, context));
 

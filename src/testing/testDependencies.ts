@@ -4,13 +4,18 @@ import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { createContainer, type Factories, valueFactories } from '@/core/di/createContainer';
 import { type LogContext, type Logger } from '@/core/logging/Logger';
 import { authFactories } from '@/features/auth/di';
+import { discoverFactories } from '@/features/discover/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
+import { weatherFactories } from '@/features/weather/di';
 
 import { FakeConnectivityService } from './FakeConnectivityService';
+import { FakeDeviceLocationService } from './FakeDeviceLocationService';
 import { FakeHttpClientFactory } from './FakeHttpClient';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
+
+export const TEST_RESTCOUNTRIES_API_KEY = 'test-restcountries-key';
 
 /** Logger whose methods are jest spies. `child()` returns the same logger, so assertions see scoped logs too. */
 export function createTestLogger(): jest.Mocked<Logger> {
@@ -49,6 +54,12 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...preferencesFactories,
     ...onboardingFactories,
     ...authFactories,
+    ...discoverFactories,
+    ...weatherFactories,
+    // Tests never read the build environment; a key is present unless a test overrides it with `null`.
+    restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
+    // No native location module in tests; permission starts undetermined.
+    deviceLocationService: () => new FakeDeviceLocationService(),
     ...valueFactories(overrides),
   });
 }

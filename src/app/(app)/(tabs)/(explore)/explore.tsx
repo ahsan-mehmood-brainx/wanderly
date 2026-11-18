@@ -1,5 +1,5 @@
-import { ExploreScreen } from '@/features/explore/presentation/screens/ExploreScreen';
+import { DiscoverScreen } from '@/features/discover/presentation/screens/DiscoverScreen';
 
 export default function ExploreRoute() {
-  return <ExploreScreen />;
+  return <DiscoverScreen />;
 }

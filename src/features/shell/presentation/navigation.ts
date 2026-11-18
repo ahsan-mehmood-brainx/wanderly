@@ -23,7 +23,9 @@ export const DRAWER_DESTINATIONS: readonly MainDestinationItem[] = [
 /** Highlights the drawer entry that owns the current screen, including its nested screens. */
 export function activeDestination(pathname: string): MainDestination | null {
   if (pathname === '/') return 'home';
-  if (pathname.startsWith('/explore') || pathname.startsWith('/destinations')) return 'explore';
+  if (pathname.startsWith('/explore') || pathname.startsWith('/search') || pathname.startsWith('/destinations')) {
+    return 'explore';
+  }
   if (pathname.startsWith('/trips')) return 'trips';
   if (pathname.startsWith('/saved')) return 'savedPlaces';
   if (pathname.startsWith('/profile')) return 'profile';

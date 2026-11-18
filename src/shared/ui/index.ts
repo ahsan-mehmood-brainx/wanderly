@@ -3,6 +3,7 @@ export { AppBadge, type AppBadgeProps, type BadgeTone, type BadgeVariant } from 
 export { AppBottomSheet, type AppBottomSheetProps } from './AppBottomSheet';
 export { AppButton, type AppButtonProps, type ButtonSize, type ButtonVariant } from './AppButton';
 export { AppCard, type AppCardProps, type CardVariant } from './AppCard';
+export { AppChip, type AppChipProps } from './AppChip';
 export { AppDivider, type AppDividerProps } from './AppDivider';
 export { AppEmptyView, type AppEmptyViewProps } from './AppEmptyView';
 export { AppErrorView, type AppErrorViewProps } from './AppErrorView';

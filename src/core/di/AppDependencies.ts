@@ -1,6 +1,8 @@
 import { type AuthDependencies } from '@/features/auth/di';
+import { type DiscoverDependencies } from '@/features/discover/di';
 import { type OnboardingDependencies } from '@/features/onboarding/di';
 import { type PreferencesDependencies } from '@/features/preferences/di';
+import { type WeatherDependencies } from '@/features/weather/di';
 
 import { type CoreDependencies } from './CoreDependencies';
 
@@ -14,4 +16,9 @@ import { type CoreDependencies } from './CoreDependencies';
  * Adding a feature: define `<Feature>Dependencies` + factories in `features/<name>/di.ts`,
  * intersect the interface here and spread the factories in `createAppContainer`.
  */
-export type AppDependencies = CoreDependencies & PreferencesDependencies & OnboardingDependencies & AuthDependencies;
+export type AppDependencies = CoreDependencies &
+  PreferencesDependencies &
+  OnboardingDependencies &
+  AuthDependencies &
+  DiscoverDependencies &
+  WeatherDependencies;

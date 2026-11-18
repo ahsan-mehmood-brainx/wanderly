@@ -2,13 +2,19 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit';
 
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { authReducer } from '@/features/auth/presentation/state/authSlice';
+import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
+import { discoverReducer } from '@/features/discover/presentation/state/discoverSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
+import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
 
 const rootReducer = combineReducers({
   preferences: preferencesReducer,
   onboarding: onboardingReducer,
   auth: authReducer,
+  discover: discoverReducer,
+  [discoverApi.reducerPath]: discoverApi.reducer,
+  [weatherApi.reducerPath]: weatherApi.reducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;
@@ -17,7 +23,12 @@ export function createAppStore(dependencies: AppDependencies, preloadedState?: P
   return configureStore({
     reducer: rootReducer,
     preloadedState,
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware({ thunk: { extraArgument: dependencies } }),
+    middleware: (getDefaultMiddleware) =>
+      // RTK Query endpoints receive the container as `extra` too, so `queryFn`s call use cases.
+      getDefaultMiddleware({ thunk: { extraArgument: dependencies } }).concat(
+        discoverApi.middleware,
+        weatherApi.middleware,
+      ),
   });
 }
 

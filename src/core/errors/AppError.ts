@@ -20,6 +20,14 @@ export const APP_ERROR_KINDS = [
   'sessionExpired',
   'notFound',
   'rateLimited',
+  /** A service the feature needs isn't set up in this build (e.g. a missing API key). */
+  'configuration',
+  /** Coordinates that can't describe a place on Earth (out of range, not finite). */
+  'invalidLocation',
+  /** No position to work with: the place has no coordinates, or the device couldn't determine where it is. */
+  'locationUnavailable',
+  /** The user declined (or the system blocks) access to the device's location. */
+  'locationPermissionDenied',
   'badRequest',
   'server',
   'parse',

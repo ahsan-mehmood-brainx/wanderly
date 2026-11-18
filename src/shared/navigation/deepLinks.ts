@@ -2,7 +2,7 @@ import { type Href } from 'expo-router';
 
 import { Subject, type Unsubscribe } from '@/core/events/Subject';
 
-import { parseRouteId, routes } from './routes';
+import { parseDestinationRouteId, parseRouteId, routes } from './routes';
 
 /**
  * Normalises whatever the OS hands over into an app path (`/trips/abc`):
@@ -39,6 +39,7 @@ export function toAppPath(rawUrl: string): string {
 
 const TOP_LEVEL: Readonly<Record<string, Href>> = {
   '/explore': routes.explore,
+  '/search': routes.search(),
   '/trips': routes.trips,
   '/budget': routes.budget,
   '/profile': routes.profile,
@@ -48,7 +49,8 @@ const TOP_LEVEL: Readonly<Record<string, Href>> = {
 /**
  * Maps an incoming link to a protected in-app destination worth restoring after
  * launch or sign-in. Deliberately an allow-list: only content screens are
- * replayed, never auth or onboarding routes, and ids must pass {@link parseRouteId}.
+ * replayed, never auth or onboarding routes, and ids must pass {@link parseRouteId}
+ * (or {@link parseDestinationRouteId}).
  */
 export function resolveDeepLink(rawUrl: string): Href | null {
   const path = toAppPath(rawUrl);
@@ -58,12 +60,20 @@ export function resolveDeepLink(rawUrl: string): Href | null {
   const segments = path.split('/').filter(Boolean).map(safeDecode);
 
   if (segments.length === 2 && segments[0] === 'destinations') {
-    const destinationId = parseRouteId(segments[1]);
+    const destinationId = parseDestinationRouteId(segments[1]);
     return destinationId ? routes.destination(destinationId) : null;
+  }
+  if (segments.length === 3 && segments[0] === 'destinations' && segments[2] === 'weather') {
+    const destinationId = parseDestinationRouteId(segments[1]);
+    return destinationId ? routes.destinationWeather(destinationId) : null;
   }
   if (segments[0] === 'trips' && segments.length === 2) {
     const tripId = parseRouteId(segments[1]);
     return tripId ? routes.trip(tripId) : null;
+  }
+  if (segments[0] === 'trips' && segments.length === 3 && segments[2] === 'weather') {
+    const tripId = parseRouteId(segments[1]);
+    return tripId ? routes.tripWeather(tripId) : null;
   }
   if (segments[0] === 'trips' && segments.length === 4 && segments[2] === 'itinerary') {
     const tripId = parseRouteId(segments[1]);
