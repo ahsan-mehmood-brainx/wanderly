@@ -4,6 +4,8 @@ import { type AppDependencies } from '@/core/di/AppDependencies';
 import { authReducer } from '@/features/auth/presentation/state/authSlice';
 import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
 import { discoverReducer } from '@/features/discover/presentation/state/discoverSlice';
+import { mapApi } from '@/features/map/presentation/state/mapApi';
+import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
 import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
@@ -15,6 +17,8 @@ const rootReducer = combineReducers({
   discover: discoverReducer,
   [discoverApi.reducerPath]: discoverApi.reducer,
   [weatherApi.reducerPath]: weatherApi.reducer,
+  map: mapReducer,
+  [mapApi.reducerPath]: mapApi.reducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;
@@ -28,6 +32,7 @@ export function createAppStore(dependencies: AppDependencies, preloadedState?: P
       getDefaultMiddleware({ thunk: { extraArgument: dependencies } }).concat(
         discoverApi.middleware,
         weatherApi.middleware,
+        mapApi.middleware,
       ),
   });
 }

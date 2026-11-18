@@ -28,6 +28,8 @@ export const APP_ERROR_KINDS = [
   'locationUnavailable',
   /** The user declined (or the system blocks) access to the device's location. */
   'locationPermissionDenied',
+  /** Location services (GPS) are turned off for the whole device, so no app can read the position. */
+  'locationServicesDisabled',
   'badRequest',
   'server',
   'parse',

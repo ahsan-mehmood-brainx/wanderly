@@ -12,6 +12,7 @@ export default function ExploreStackLayout() {
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Screen name="explore" options={{ ...tabRootOptions, title: t('discover.title') }} />
       <Stack.Screen name="search" options={{ title: t('search.title') }} />
+      <Stack.Screen name="map" options={{ title: t('map.title') }} />
       {/* The screen replaces the title with the destination's name once it has loaded. */}
       <Stack.Screen name="destinations/[destinationId]" options={{ title: t('destination.title') }} />
       <Stack.Screen name="destinations/[destinationId]/weather" options={{ title: t('weather.title') }} />

@@ -8,6 +8,7 @@ import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore, type AppStore } from '@/core/store/store';
 import { authFactories } from '@/features/auth/di';
 import { discoverFactories } from '@/features/discover/di';
+import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
@@ -41,6 +42,7 @@ export function createAppContainer(): AppContainer {
     ...authFactories,
     ...discoverFactories,
     ...weatherFactories,
+    ...mapFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

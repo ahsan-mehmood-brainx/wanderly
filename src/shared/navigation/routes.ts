@@ -44,6 +44,7 @@ export const routes = {
   settings: '/profile/settings',
   designSystem: '/profile/design-system',
   savedPlaces: '/saved',
+  map: '/map',
   signIn: '/sign-in',
   register: '/register',
   search: (params: SearchRouteParams = {}) => ({ pathname: '/search', params }) satisfies Href,

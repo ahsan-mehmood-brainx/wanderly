@@ -42,6 +42,12 @@ describe('resolveDeepLink', () => {
     expect(resolveDeepLink('/saved')).toBe(routes.savedPlaces);
   });
 
+  it('opens the explore map', () => {
+    expect(resolveDeepLink('wanderly://map')).toBe(routes.map);
+    expect(resolveDeepLink('exp://192.168.1.2:8081/--/map')).toBe(routes.map);
+    expect(resolveDeepLink('/map/extra')).toBeNull();
+  });
+
   it('never replays auth or unknown routes, or ids that fail validation', () => {
     expect(resolveDeepLink('/sign-in')).toBeNull();
     expect(resolveDeepLink('/onboarding')).toBeNull();

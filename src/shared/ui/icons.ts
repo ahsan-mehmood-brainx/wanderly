@@ -107,6 +107,16 @@ export const icons = {
   uvIndex: icon('sun.max', 'light_mode'),
   arrowUp: icon('arrow.up', 'north'),
   myLocation: icon('location.fill', 'my_location'),
+
+  // Explore map: place categories and map actions.
+  attraction: icon('camera', 'photo_camera'),
+  restaurant: icon('fork.knife', 'restaurant'),
+  hotel: icon('bed.double', 'hotel'),
+  museum: icon('building.columns', 'museum'),
+  park: icon('tree', 'park'),
+  landmark: icon('building.columns.circle', 'castle'),
+  directions: icon('arrow.triangle.turn.up.right.diamond', 'directions'),
+  pin: icon('mappin', 'push_pin'),
 } as const satisfies Record<string, IconDefinition>;
 
 export type AppIconName = keyof typeof icons;
