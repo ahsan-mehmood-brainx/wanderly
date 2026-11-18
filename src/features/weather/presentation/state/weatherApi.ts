@@ -20,6 +20,13 @@ const fromResult = <T>(result: Result<T, AppError>): QueryResult<T> =>
 /** The thunk extra argument is the DI container (see `createAppStore`). */
 const dependencies = (extra: unknown) => extra as AppDependencies;
 
+/** A device position and when it was read, by the injected clock. */
+export interface DevicePosition {
+  readonly coordinates: Coordinates;
+  /** Epoch ms of the read, so its age holds even for a screen that mounts onto the cached copy. */
+  readonly readAt: number;
+}
+
 /** Seconds a result stays cached after the last screen using it goes away. */
 export const WEATHER_CACHE_SECONDS = {
   /** Destination card → full forecast → back is instant; matches the use case's freshness window. */
@@ -54,9 +61,14 @@ export const weatherApi = createApi({
         ),
       keepUnusedDataFor: WEATHER_CACHE_SECONDS.forecast,
     }),
-    deviceLocation: build.query<Coordinates, void>({
-      queryFn: async (_arg, api) =>
-        fromResult(await dependencies(api.extra).getDeviceLocation.execute({ signal: api.signal })),
+    deviceLocation: build.query<DevicePosition, void>({
+      queryFn: async (_arg, api) => {
+        const { getDeviceLocation, clock } = dependencies(api.extra);
+        const result = await getDeviceLocation.execute({ signal: api.signal });
+        return result.ok
+          ? { data: { coordinates: result.value, readAt: clock.now() } }
+          : fromResult<DevicePosition>(result);
+      },
       keepUnusedDataFor: WEATHER_CACHE_SECONDS.deviceLocation,
     }),
   }),

@@ -6,7 +6,7 @@ import { type AppErrorKind } from '@/core/errors/AppError';
 
 import { type Coordinates } from '../../domain/Coordinates';
 import { type LocationPermission } from '../../domain/repositories';
-import { useDeviceLocationQuery, weatherErrorKind } from '../state/weatherApi';
+import { useDeviceLocationQuery, WEATHER_CACHE_SECONDS, weatherErrorKind } from '../state/weatherApi';
 import { useWeather, type WeatherState } from './useWeather';
 
 export type DeviceWeatherState =
@@ -25,10 +25,12 @@ export type DeviceWeatherState =
  * Weather where the device is. The permission prompt is never shown on its own:
  * the UI explains why first and asks when the user taps (`request`). The
  * permission is read again whenever the app returns to the foreground, so
- * turning location on in Settings takes effect on return.
+ * turning location on in Settings takes effect on return. With permission
+ * granted, the position is read again on return too when it failed or is older
+ * than the device-location cache window, so the weather follows the traveller.
  */
 export function useDeviceWeather(): DeviceWeatherState {
-  const { getLocationPermission, requestLocationPermission, logger } = useDependencies();
+  const { getLocationPermission, requestLocationPermission, logger, clock } = useDependencies();
   const [permission, setPermission] = useState<LocationPermission | null>(null);
   const [requesting, setRequesting] = useState(false);
 
@@ -51,9 +53,23 @@ export function useDeviceWeather(): DeviceWeatherState {
   }, [getLocationPermission, recheck]);
 
   const location = useDeviceLocationQuery(undefined, { skip: permission !== 'granted' });
-  const coordinates = location.currentData ?? null;
+  const coordinates = location.currentData?.coordinates ?? null;
   const weather = useWeather(coordinates);
   const locationError = coordinates ? null : weatherErrorKind(location.error);
+
+  // Back in the foreground: the traveller may have moved, or turned location services back on.
+  // The age comes from when the position was read, not from when this screen first saw it.
+  const { refetch: refetchLocation, isUninitialized } = location;
+  const readAt = location.currentData?.readAt ?? null;
+  useEffect(() => {
+    if (permission !== 'granted' || isUninitialized) return undefined;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const stale = readAt === null || clock.now() - readAt >= WEATHER_CACHE_SECONDS.deviceLocation * 1000;
+      if (stale) void refetchLocation();
+    });
+    return () => subscription.remove();
+  }, [permission, isUninitialized, readAt, clock, refetchLocation]);
 
   // Permission revoked while the app was running: show the permission state again.
   useEffect(() => {

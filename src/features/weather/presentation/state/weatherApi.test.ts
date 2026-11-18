@@ -83,11 +83,11 @@ describe('weatherApi (RTK Query over use cases)', () => {
   });
 
   it('locates the device through the use case', async () => {
-    const { store, deviceLocationService } = setup();
+    const { store, deviceLocationService, clock } = setup();
     deviceLocationService.permission = 'granted';
 
     const result = await store.dispatch(weatherApi.endpoints.deviceLocation.initiate());
 
-    expect(result.data).toEqual({ latitude: 38.72, longitude: -9.14 });
+    expect(result.data).toEqual({ coordinates: { latitude: 38.72, longitude: -9.14 }, readAt: clock.now() });
   });
 });

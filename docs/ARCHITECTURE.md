@@ -416,7 +416,7 @@ Coordinates are rounded to 2 decimals (~1 km, finer than the weather models' res
 | Out-of-range, non-finite, or 0,0 coordinates          | `invalidLocation`; no request                                                                      |
 | Destination without coordinates                       | `locationUnavailable`; "we don't know exactly where this place is", no retry                       |
 | Place whose Wikipedia summary failed to load          | That error, with a retry that refetches the destination (not the "no coordinates" message)         |
-| Screen left open for hours / app back from background | "Now", "Today" and the age move on (`useNow`); a forecast older than 15 min is downloaded again    |
+| Screen left open for hours / app back from background | "Now", "Today" and the age move on; stale forecast, retryable error or stale position re-read      |
 | Country                                               | Forecast for REST Countries' reference point, labelled "centre of …"                               |
 | Location permission not asked / denied / blocked      | Explanation first, then the prompt on tap; blocked shows "Open Settings"; re-checked on foreground |
 | Location services off, no fix in 15 s                 | `locationUnavailable` with retry; a last-known fix under 10 min old is used instantly              |
@@ -425,6 +425,8 @@ Coordinates are rounded to 2 decimals (~1 km, finer than the weather models' res
 | Missing or malformed values                           | That value is `null` and shown as "—" / "not available"; arrays stay aligned with `time`           |
 | Polar day / night (sunrise = sunset = midnight)       | Classified by `daylight_duration`; "Sun up all day" / "No sunrise today"                           |
 | Unknown WMO code                                      | `unknown` condition with a neutral icon, never a guess                                             |
+
+Back from the background (or with the screen left open for hours), "Now", "Today" and the forecast age move on through `useNow`. A forecast older than 15 min is downloaded again, and a retryable error (server, timeout, offline…) is retried. The device position is re-read when the last read failed or is over 2 min old, measured from when it was read (`DevicePosition.readAt`), not from when the screen mounted. If the traveller has moved, the stale forecast for the old place is still downloaded once before the new place's forecast replaces it.
 
 ### Testing
 
