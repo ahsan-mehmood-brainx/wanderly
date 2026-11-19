@@ -18,7 +18,7 @@ Wanderly uses Clean Architecture with three layers per feature. Dependencies poi
                 │ implements repository interfaces
 ┌───────────────┴───────────────── data ───────────────────────────┐
 │  repository implementations · DTOs + zod schemas · mappers       │
-│  data sources: HttpClient (APIs), KeyValueStore (device)         │
+│  data sources: HttpClient (APIs), KeyValueStore, SqlDatabase     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,6 +42,7 @@ src/
     AppProviders.tsx           DI context, Redux, i18n, safe area, preferences gate
   core/                      Cross-cutting infrastructure; knows no feature (except the DI type aggregate)
     config/                    AppConfig (env-derived settings)
+    database/                  SqlDatabase port, SqliteDatabase (queue, transactions), migrations, expo-sqlite driver
     di/                        createContainer, CoreDependencies, AppDependencies, DependenciesProvider
     errors/                    AppError taxonomy, error → i18n message mapping
     events/                    Subject / Observable (Observer pattern)
@@ -253,6 +254,7 @@ No test makes a real network request or touches device storage.
 | `ManualClock`, `sequentialIds`             | `Clock`, `IdGenerator`  | deterministic time and ids                                                       |
 | `createTestLogger()`                       | `Logger`                | jest spies; `child()` returns the same logger                                    |
 | `InMemoryKeyValueStore`                    | `KeyValueStore`         |                                                                                  |
+| `nodeSqliteDriver`                         | expo-sqlite connection  | real SQLite (`node:sqlite`, Node 22.13+) in memory; the default test `database`  |
 
 What to test at each layer:
 
@@ -394,7 +396,7 @@ data          OpenMeteoWeatherRepository (HttpClient + zod DTOs + mappers) · St
               ExpoDeviceLocationService (expo-location adapter, injectable for tests)
 ```
 
-Weather appears on the destination page (`DestinationWeatherCard`, linking to `destinations/[id]/weather`) and on the trip page. Trips don't have destinations yet (feature 4), so the trip page shows the weather where the device is (`trips/[id]/weather` for the full forecast). It will switch to the trip's coordinates through the same `useWeather` hook.
+Weather appears on the destination page (`DestinationWeatherCard`, linking to `destinations/[id]/weather`) and on the trip page. Trips store a destination's id and name but not its coordinates, so the trip page still shows the weather where the device is (`trips/[id]/weather` for the full forecast). It can switch to the destination through the same `useWeather` hook once coordinates are available.
 
 ### Requests and time zones
 
@@ -494,3 +496,52 @@ Both services are run by volunteers, so the data layer enforces their usage poli
 `testing/mapFixtures.ts` holds Overpass and Nominatim responses in the wire format and `stubOverpass` / `stubNominatim`. `FakeLocationService` is the default `mapLocationService` in `createTestDependencies` (permission starts `undetermined`). `jest.setup.ts` mocks react-native-maps with plain Views that keep their props, so tests fire `longPress`, `mapReady` and marker presses directly. The throttle and services are tested with fake timers; the screen through `renderWithProviders` with a `ManualClock`, so tests move past the request spacing explicitly.
 
 `jest.afterEnv.ts` installs `testing/syncSafeAct.ts`: React Native Testing Library 14 runs every `act()` asynchronously, so a `fireEvent` or `unmount` that isn't awaited overlaps the next `act()` and React stops flushing for the rest of the file. Synchronous callbacks now use React's synchronous `act()` (the RNTL 13 behaviour). It also clears recorded mock calls after each test, because preset mocks such as `Linking.openURL` are reused by `jest.spyOn` and Jest 30's `restoreAllMocks` keeps their calls.
+
+## 14. Trip management
+
+`features/trips/` is the traveller's own data: create, edit, cancel, restore and delete trips, all on the device in SQLite and kept separately for each signed-in account. No operation uses the network or a backend.
+
+### Layers
+
+```
+presentation  TripsScreen (My Trips) · TripListScreen (Upcoming, Completed) · TripScreen (details) · Create/EditTripScreen
+              DateRangeSheet · DestinationSheet · CurrencySheet · ConfirmSheet · useTrips · useTrip · useTripForm · useToday
+              tripsSlice (mirror of the table, one change at a time) · selectors (status as of today)
+domain        Trip / StoredTrip / TripInput · localDate · tripStatus · tripValidation · money
+              TripRepository · TripOwnerProvider · TripCoverStore · ImagePickerService
+              GetTrips · GetTrip · CreateTrip · UpdateTrip · DeleteTrip · SetTripCancelled · PickCoverImage
+data          LocalTripRepository (SqlDatabase) · SessionTripOwnerProvider · tripMigrations
+              FileSystemTripCoverStore · ExpoImagePickerService
+core          SqlDatabase · SqliteDatabase · migrate · expoSqliteDriver
+```
+
+### Database
+
+`core/database` owns one app database, `wanderly.db`. `SqliteDatabase` opens it on the first statement, runs every statement and transaction one at a time, and does not cache a failed open. Migrations are forward-only, numbered 1, 2, 3… across the whole app (`bootstrap/databaseMigrations.ts`) and tracked in `PRAGMA user_version`. Each runs in a transaction with its version bump. A database from a newer app version is refused and left untouched. To change the schema, append a migration; never edit a shipped one.
+
+### Rules
+
+| Topic        | Rule                                                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dates        | `YYYY-MM-DD` calendar dates, so a trip doesn't move when the time zone changes. Both the first and last day belong to the trip.                                                                         |
+| Status       | Not stored. `cancelled` if `cancelledAt` is set; otherwise `upcoming` before the start, `ongoing` through the last day, then `completed`. Re-derived for today in selectors, so trips move at midnight. |
+| Overlaps     | Trips that aren't cancelled can't overlap: `a.start < b.end && b.start < a.end`. One trip may start the day another ends. Saving or restoring into taken dates is refused and names the other trip.     |
+| Budget       | Required, positive, at most 10,000,000 in major units and the currency's decimals. Stored as integer minor units. Thousands separators are rejected, not guessed.                                       |
+| Required     | Title (max 80), destination, both dates (end not before start, max 366 days), budget, currency. Description and cover are optional.                                                                     |
+| Destination  | Discover search when online. Offline: recently viewed and curated places, or any typed name (`custom:` id, which has no destination page).                                                              |
+| Cover photo  | Copied to `documents/trip-covers` when the trip is saved. The database keeps the relative path, because the absolute one changes on iOS updates. Not offered on web.                                    |
+| Unsaved form | Leaving with changes asks first.                                                                                                                                                                        |
+
+### Accounts
+
+Each row has an `owner_id`, the signed-in user's id, and every repository method takes the owner and filters on it. Another account's trip behaves as if it didn't exist, and overlaps are only checked within one account. Use cases read the owner once from `TripOwnerProvider` (backed by `SessionManager`) and return `unauthorized` when nobody is signed in.
+
+Signing out keeps the rows, so the traveller gets their trips back on signing in again. `tripsSlice` drops its copy on sign-out, session expiry and sign-in, and ignores results from requests started before that. The separation is enforced by the app; the database file itself isn't encrypted.
+
+### Web
+
+expo-sqlite on web needs `.wasm` support and `SharedArrayBuffer`. `metro.config.js` provides both in development. A production web host must send `Cross-Origin-Embedder-Policy: credentialless` and `Cross-Origin-Opener-Policy: same-origin`; without them trips show the storage error.
+
+### Testing
+
+`createTestDependencies` gives each container its own in-memory SQLite, so repositories, migrations, constraints and rollbacks run against real SQL. `testing/tripFixtures.ts` has `storedTrip`, `tripInput`, `seededTripDatabase`, `FakeTripOwnerProvider` (signed in as `TRIP_OWNER` by default), `FakeTripCoverStore`, `FakeImagePickerService` and `TRIPS_NOW` (midday UTC, so the date is the same in nearly every zone). `tripFlows.test.tsx` drives the real routes with `renderRouter`.

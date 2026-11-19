@@ -12,6 +12,7 @@ import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
+import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
 import { createCoreFactories } from './coreFactories';
@@ -43,6 +44,7 @@ export function createAppContainer(): AppContainer {
     ...discoverFactories,
     ...weatherFactories,
     ...mapFactories,
+    ...tripsFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

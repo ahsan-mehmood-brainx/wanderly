@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 
 import { type AppConfig } from '@/core/config/appConfig';
+import { expoSqliteDriver } from '@/core/database/ExpoSqliteDriver';
+import { SqliteDatabase } from '@/core/database/SqliteDatabase';
 import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { type Factories } from '@/core/di/createContainer';
 import { AxiosHttpClientFactory } from '@/core/http/HttpClientFactory';
@@ -12,6 +14,8 @@ import { ExpoSecureKeyValueStore } from '@/core/storage/ExpoSecureKeyValueStore'
 import { MemorySecureKeyValueStore } from '@/core/storage/MemorySecureKeyValueStore';
 import { systemClock } from '@/core/utils/Clock';
 import { randomId } from '@/core/utils/IdGenerator';
+
+import { APP_DATABASE_NAME, APP_MIGRATIONS } from './databaseMigrations';
 
 interface CoreFactoryOptions {
   readonly config: AppConfig;
@@ -37,6 +41,12 @@ export function createCoreFactories({ config, getLanguage }: CoreFactoryOptions)
     keyValueStore: () => new AsyncStorageKeyValueStore(),
     // SecureStore has no web implementation; web keeps secrets in memory rather than in plain localStorage.
     secureStore: () => (Platform.OS === 'web' ? new MemorySecureKeyValueStore() : new ExpoSecureKeyValueStore()),
+    database: (c) =>
+      new SqliteDatabase({
+        driver: expoSqliteDriver(APP_DATABASE_NAME),
+        migrations: APP_MIGRATIONS,
+        logger: c.logger.child({ scope: 'database' }),
+      }),
     connectivity: (c) => new ExpoNetworkConnectivityService(c.logger.child({ scope: 'connectivity' })),
     httpClientFactory: (c) =>
       new AxiosHttpClientFactory({

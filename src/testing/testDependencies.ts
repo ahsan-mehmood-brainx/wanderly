@@ -1,4 +1,6 @@
+import { APP_MIGRATIONS } from '@/bootstrap/databaseMigrations';
 import { createAppConfig } from '@/core/config/appConfig';
+import { SqliteDatabase } from '@/core/database/SqliteDatabase';
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { createContainer, type Factories, valueFactories } from '@/core/di/createContainer';
@@ -8,6 +10,7 @@ import { discoverFactories } from '@/features/discover/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
+import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
 import { FakeConnectivityService } from './FakeConnectivityService';
@@ -16,6 +19,8 @@ import { FakeHttpClientFactory } from './FakeHttpClient';
 import { FakeLocationService } from './FakeLocationService';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
+import { nodeSqliteDriver } from './nodeSqliteDriver';
+import { FakeImagePickerService, FakeTripCoverStore, FakeTripOwnerProvider } from './tripFixtures';
 
 export const TEST_RESTCOUNTRIES_API_KEY = 'test-restcountries-key';
 
@@ -40,6 +45,9 @@ export function testCoreFactories(): Factories<CoreDependencies> {
     idGenerator: () => sequentialIds(),
     keyValueStore: () => new InMemoryKeyValueStore(),
     secureStore: () => new InMemoryKeyValueStore(),
+    // Real SQLite in memory, one database per container.
+    database: (c) =>
+      new SqliteDatabase({ driver: nodeSqliteDriver().driver, migrations: APP_MIGRATIONS, logger: c.logger }),
     connectivity: () => new FakeConnectivityService(),
     httpClientFactory: () => new FakeHttpClientFactory(),
   };
@@ -59,11 +67,17 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...discoverFactories,
     ...weatherFactories,
     ...mapFactories,
+    ...tripsFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.
     deviceLocationService: () => new FakeDeviceLocationService(),
     mapLocationService: () => new FakeLocationService(),
+    // Trip tests run as a signed-in account without going through sign-in.
+    tripOwnerProvider: () => new FakeTripOwnerProvider(),
+    // No native file system or photo picker in tests.
+    tripCoverStore: () => new FakeTripCoverStore(),
+    imagePickerService: () => new FakeImagePickerService(),
     ...valueFactories(overrides),
   });
 }

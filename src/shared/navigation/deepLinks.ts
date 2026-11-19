@@ -41,6 +41,10 @@ const TOP_LEVEL: Readonly<Record<string, Href>> = {
   '/explore': routes.explore,
   '/search': routes.search(),
   '/trips': routes.trips,
+  // Listed before the `/trips/<id>` pattern: these words are screens, not trip ids.
+  '/trips/new': routes.newTrip,
+  '/trips/upcoming': routes.upcomingTrips,
+  '/trips/completed': routes.completedTrips,
   '/budget': routes.budget,
   '/profile': routes.profile,
   '/saved': routes.savedPlaces,
@@ -71,6 +75,10 @@ export function resolveDeepLink(rawUrl: string): Href | null {
   if (segments[0] === 'trips' && segments.length === 2) {
     const tripId = parseRouteId(segments[1]);
     return tripId ? routes.trip(tripId) : null;
+  }
+  if (segments[0] === 'trips' && segments.length === 3 && segments[2] === 'edit') {
+    const tripId = parseRouteId(segments[1]);
+    return tripId ? routes.editTrip(tripId) : null;
   }
   if (segments[0] === 'trips' && segments.length === 3 && segments[2] === 'weather') {
     const tripId = parseRouteId(segments[1]);

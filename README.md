@@ -23,7 +23,7 @@ Explore needs a free [REST Countries](https://restcountries.com/sign-up) API key
 | `npm run check`     | Typecheck, lint, format check, and tests in one go             |
 | `npx expo-doctor`   | Dependency and config health check                             |
 
-Run `typecheck`, `lint`, and `test` before opening a PR.
+Run `typecheck`, `lint`, and `test` before opening a PR. Database tests use Node's built-in SQLite, so they need Node 22.13 or newer.
 
 Install new packages with `npx expo install <pkg>` so you get SDK-compatible versions. Libraries with native code that Expo Go doesn't include need a development build (`npx expo run:ios|android` or `eas build --profile development`).
 
@@ -38,7 +38,7 @@ src/
   app/            Expo Router routes only (thin; each file renders a feature screen)
   bootstrap/      Composition root (container, store, i18n), providers, start-up gate
   core/           Infrastructure with no feature knowledge:
-                  di · http · network · logging · errors · events · storage · store · theme · i18n · config · utils
+                  di · database · http · network · logging · errors · events · storage · store · theme · i18n · config · utils
   features/<f>/   domain/ (incl. usecases/) · data/ · presentation/ · di.ts (the feature's DI module)
   shared/         Design-system components (`@/shared/ui`) and cross-feature hooks
   testing/        Test doubles, render helpers, executable examples
@@ -113,7 +113,11 @@ The `wanderly://` scheme opens:
 | ------------------------------------------------- | ------------------------------------ |
 | `wanderly://destinations/<destinationId>`         | Destination                          |
 | `wanderly://search`                               | Search                               |
+| `wanderly://trips/new`                            | Create trip                          |
+| `wanderly://trips/upcoming`                       | Upcoming trips                       |
+| `wanderly://trips/completed`                      | Completed trips                      |
 | `wanderly://trips/<tripId>`                       | Trip                                 |
+| `wanderly://trips/<tripId>/edit`                  | Edit trip                            |
 | `wanderly://trips/<tripId>/itinerary/<itemId>`    | Itinerary item                       |
 | `wanderly://destinations/<destinationId>/weather` | Destination forecast                 |
 | `wanderly://trips/<tripId>/weather`               | Forecast where you are (from a trip) |

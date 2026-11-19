@@ -50,7 +50,17 @@
         {
           "locationWhenInUsePermission": "Wanderly uses your location to show the weather where you are and places near you on the map. Your position is rounded before it is used to look up the forecast or nearby places."
         }
-      ]
+      ],
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Wanderly lets you choose a photo from your library as a trip's cover image. The photo stays on this device.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-asset"
     ],
     "scheme": "wanderly",
     "experiments": {

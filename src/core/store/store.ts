@@ -8,6 +8,7 @@ import { mapApi } from '@/features/map/presentation/state/mapApi';
 import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
+import { tripsReducer } from '@/features/trips/presentation/state/tripsSlice';
 import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
 
 const rootReducer = combineReducers({
@@ -19,6 +20,7 @@ const rootReducer = combineReducers({
   [weatherApi.reducerPath]: weatherApi.reducer,
   map: mapReducer,
   [mapApi.reducerPath]: mapApi.reducer,
+  trips: tripsReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;
