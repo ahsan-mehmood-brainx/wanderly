@@ -8,6 +8,7 @@ import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore, type AppStore } from '@/core/store/store';
 import { authFactories } from '@/features/auth/di';
 import { discoverFactories } from '@/features/discover/di';
+import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
@@ -45,6 +46,7 @@ export function createAppContainer(): AppContainer {
     ...weatherFactories,
     ...mapFactories,
     ...tripsFactories,
+    ...itineraryFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

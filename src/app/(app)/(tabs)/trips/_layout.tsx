@@ -29,7 +29,11 @@ export default function TripsStackLayout() {
       <Stack.Screen name="[tripId]/index" options={{ title: t('trips.tripTitle') }} />
       <Stack.Screen name="[tripId]/edit" options={{ title: t('trips.editTrip') }} />
       <Stack.Screen name="[tripId]/weather" options={{ title: t('weather.title') }} />
-      <Stack.Screen name="[tripId]/itinerary/[itemId]" options={{ title: t('trips.itineraryTitle') }} />
+      <Stack.Screen name="[tripId]/itinerary/index" options={{ title: t('itinerary.title') }} />
+      <Stack.Screen name="[tripId]/itinerary/day/[date]" options={{ title: t('itinerary.dayTitle') }} />
+      <Stack.Screen name="[tripId]/itinerary/new" options={{ title: t('itinerary.newActivity') }} />
+      <Stack.Screen name="[tripId]/itinerary/[itemId]" options={{ title: t('itinerary.activityTitle') }} />
+      <Stack.Screen name="[tripId]/itinerary/[itemId]/edit" options={{ title: t('itinerary.editActivity') }} />
     </Stack>
   );
 }

@@ -321,7 +321,7 @@ The authorized HTTP client reads the token through `BearerTokenAuth(() => sessio
 
 ### Deep links
 
-`+native-intent` records each incoming path in `deepLinkInbox` (on web, the page URL is recorded at start-up). When the phase becomes `app`, `useDeferredDeepLink` resolves the pending link through an allow-list (`resolveDeepLink`: destinations, trips, itinerary items and top-level tabs, with ids validated by `parseRouteId`) and navigates to it. The navigation waits one macrotask so the guard redirect doesn't overwrite it. While signed in, the router opens links itself.
+`+native-intent` records each incoming path in `deepLinkInbox` (on web, the page URL is recorded at start-up). When the phase becomes `app`, `useDeferredDeepLink` resolves the pending link through an allow-list (`resolveDeepLink`: destinations, trips, itinerary days, items, add and edit forms, and top-level tabs, with ids validated by `parseRouteId` and dates by `isLocalDate`) and navigates to it. The navigation waits one macrotask so the guard redirect doesn't overwrite it. While signed in, the router opens links itself.
 
 ### Testing
 
@@ -545,3 +545,64 @@ expo-sqlite on web needs `.wasm` support and `SharedArrayBuffer`. `metro.config.
 ### Testing
 
 `createTestDependencies` gives each container its own in-memory SQLite, so repositories, migrations, constraints and rollbacks run against real SQL. `testing/tripFixtures.ts` has `storedTrip`, `tripInput`, `seededTripDatabase`, `FakeTripOwnerProvider` (signed in as `TRIP_OWNER` by default), `FakeTripCoverStore`, `FakeImagePickerService` and `TRIPS_NOW` (midday UTC, so the date is the same in nearly every zone). `tripFlows.test.tsx` drives the real routes with `renderRouter`.
+
+## 15. Itinerary
+
+`features/itinerary/` is a day-by-day plan for each trip: activities with a category, optional times, place, notes and estimated cost, which can be reordered by drag and drop and ticked off. Like trips, everything lives in SQLite on the device, per account, and works offline. The only network call is the optional place search in the form.
+
+### Layers
+
+```
+presentation  ItineraryOverviewScreen · DailyItineraryScreen · NewActivityScreen / EditActivityScreen · ActivityDetailsScreen
+              ReorderableActivityList (Gesture Handler + Reanimated) · ActivityRow · CategoryPicker · TimeSheet
+              TripDaySheet · LocationSheet · ProgressSummary · ItineraryEntryCard (on TripScreen) · reorder · format
+              useItinerary · useItineraryDay · useActivity · useActivityForm
+              itinerarySlice (mirror per trip, one change at a time) · selectors (day, progress, costs, conflicts)
+domain        Activity / ActivityInput / ActivityDraft · localTime · timeConflicts · itinerary · activityValidation
+              ActivityRepository · GetItinerary · GetActivity · CreateActivity · UpdateActivity · DeleteActivity
+              SetActivityCompleted · ReorderActivities
+data          LocalActivityRepository (SqlDatabase) · itineraryMigrations (version 2)
+```
+
+It reuses the trips domain (`LocalDate`, `money`, `TripRepository`, `TripOwnerProvider`), the map's `checkCoordinates`, `searchPlaces`, location use cases and `buildDirectionsUrls`, and the trips `ConfirmSheet`, `PickerField` and `CurrencySheet`.
+
+### Database
+
+Migration 2 creates `activities`: `owner_id`, `trip_id REFERENCES trips(id) ON DELETE CASCADE`, `date` (`YYYY-MM-DD`), `start_time`/`end_time` (`HH:mm`, nullable), `latitude`/`longitude` (both or neither), `estimated_cost_minor` (integer minor units, nullable), `currency`, `sort_order` and `is_completed`, with `CHECK`s that mirror validation (title not empty, known category, end after start, cost not negative, three-letter currency). `idx_activities_owner_trip_date` covers the list query and `idx_activities_trip` the cascade. `SqliteDatabase` turns foreign keys on for each connection; a repository test proves that deleting a trip deletes its activities.
+
+Positions are 0..n-1 per day. Insert, update (including a move to another day), delete and reorder renumber the affected days inside one transaction, so a failed write never leaves a day half renumbered. `reorder` refuses with `notFound`, changing nothing, unless the ids are exactly that day's activities.
+
+### Rules
+
+| Topic          | Rule                                                                                                                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Times          | Optional `HH:mm` wall-clock times at the destination, with no time zone, so nothing moves when the device's zone changes. An end time needs a start time and must be later the same day.      |
+| Day            | Must be one of the trip's days. The form only offers trip days.                                                                                                                               |
+| Duration       | End minus start, only when both are set. Shown as `1 h 30 min`.                                                                                                                               |
+| Conflicts      | Two timed activities on the same day overlap when `a.start < b.end && b.start < a.end`; back-to-back ones don't. Overlaps are saved, but flagged on the timeline, overview, details and form. |
+| Duplicates     | Refused: same trip and day, same title (trimmed, any case) and same start time (two untimed ones count as the same). The error names the existing activity.                                  |
+| Order          | `sortOrder` is the display order. A new activity, or one whose day or start time changes, goes after the last one starting at or before it; untimed ones go last. Dragging sets any order.   |
+| Cost           | Optional, positive, at most 1,000,000 in major units and the currency's decimals; defaults to the trip's currency. Totals are per currency, never converted. A free activity leaves it empty. |
+| Location       | Free-text address (offline), current position (GPS works offline), or place search (online only). Coordinates go through `checkCoordinates`.                                                 |
+| Limits         | Title 80, description and notes 2000, address 200 characters; 50 activities per day, which keeps the fixed-height drag list practical.                                                       |
+| Unsaved form   | Leaving with changes asks first.                                                                                                                                                              |
+
+### Edge cases
+
+| Case                          | Behaviour                                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trip dates edited             | Activities now outside the trip are kept and listed under "Outside trip dates" on the overview. They can be opened, completed and deleted; saving an edit requires a trip day. |
+| Trip deleted                  | SQLite cascades; `itinerarySlice` drops the trip's activities on `deleteTrip.fulfilled`. Itinerary screens show "Trip not found", and a create for a deleted trip is `notFound`. |
+| Activity deleted or not owned | Details and edit show "Activity not found" with a way back to the itinerary. Another account's activity behaves as missing.                                     |
+| Reorder save fails            | The day returns to the previous order and shows the storage error.                                                                                              |
+| Double tap on save            | The thunk `condition` allows one change at a time, so it saves once.                                                                                            |
+| Offline                       | Everything works; only "Search places" is disabled, with "Search needs a connection".                                                                           |
+| Sign-out, expiry, sign-in     | `itinerarySlice` resets and ignores results from requests started before.                                                                                       |
+
+### Drag and drop
+
+`ReorderableActivityList` renders rows of a fixed height (`ACTIVITY_ROW_HEIGHT`). Each row's handle has a `Gesture.Pan().activateAfterLongPress(250)`; Reanimated shared values move the dragged row and shift the others on the UI thread, and the drop calls `onReorder(from, to)` once. The pure helpers `dropIndexFor` and `moveItem` in `presentation/reorder.ts` do the arithmetic. Every row also has "Move up" and "Move down" accessibility actions that call the same `onReorder`, so screen reader users can reorder too. The list has its own `GestureHandlerRootView`, and the daily screen stops scrolling while a drag is active. The screen shows the new order at once and puts the old one back if saving fails.
+
+### Testing
+
+`testing/itineraryFixtures.ts` has `activity`, `activityInput`, `ITINERARY_TRIP` and `seededItineraryDatabase` (trips and activities in real in-memory SQLite). Domain functions, the repository (cascade, rollback, owner separation, corrupt rows, `CHECK`s), use cases and the slice have unit tests. `ReorderableActivityList.test.tsx` drives the drag with Gesture Handler's `fireGestureHandler`, and `itineraryFlows.test.tsx` covers the screens with `renderRouter`. `jest.setup.ts` loads Gesture Handler's Jest setup and mocks Worklets and Reanimated; Reanimated uses `testing/reanimatedMock.ts`, because the library's own mock imports its real entry point, which throws under jest-expo's native platform.

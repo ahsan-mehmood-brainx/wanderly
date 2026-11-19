@@ -25,6 +25,18 @@ export interface ItineraryItemRouteParams extends Record<string, string> {
   readonly itemId: string;
 }
 
+export interface ItineraryDayRouteParams extends Record<string, string> {
+  readonly tripId: string;
+  /** `YYYY-MM-DD`, validated with `isLocalDate`. */
+  readonly date: string;
+}
+
+export interface NewActivityRouteParams extends Record<string, string | undefined> {
+  readonly tripId: string;
+  /** Day to preselect (`YYYY-MM-DD`). */
+  readonly date?: string;
+}
+
 export interface SignInRouteParams extends Record<string, string | undefined> {
   /** `demo` pre-fills the demo account (used after the demo sign-up). */
   readonly prefill?: 'demo';
@@ -58,8 +70,18 @@ export const routes = {
   trip: (tripId: string) => ({ pathname: '/trips/[tripId]', params: { tripId } }) satisfies Href,
   editTrip: (tripId: string) => ({ pathname: '/trips/[tripId]/edit', params: { tripId } }) satisfies Href,
   tripWeather: (tripId: string) => ({ pathname: '/trips/[tripId]/weather', params: { tripId } }) satisfies Href,
+  itinerary: (tripId: string) => ({ pathname: '/trips/[tripId]/itinerary', params: { tripId } }) satisfies Href,
+  itineraryDay: (tripId: string, date: string) =>
+    ({ pathname: '/trips/[tripId]/itinerary/day/[date]', params: { tripId, date } }) satisfies Href,
+  newActivity: (tripId: string, date?: string) =>
+    ({
+      pathname: '/trips/[tripId]/itinerary/new',
+      params: date === undefined ? { tripId } : { tripId, date },
+    }) satisfies Href,
   itineraryItem: (tripId: string, itemId: string) =>
     ({ pathname: '/trips/[tripId]/itinerary/[itemId]', params: { tripId, itemId } }) satisfies Href,
+  editActivity: (tripId: string, itemId: string) =>
+    ({ pathname: '/trips/[tripId]/itinerary/[itemId]/edit', params: { tripId, itemId } }) satisfies Href,
 } as const satisfies Record<string, Href | ((...args: never[]) => Href)>;
 
 const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

@@ -121,6 +121,13 @@ export const icons = {
   landmark: icon('building.columns.circle', 'castle'),
   directions: icon('arrow.triangle.turn.up.right.diamond', 'directions'),
   pin: icon('mappin', 'push_pin'),
+
+  // Itinerary: activity categories, completion and reordering.
+  shopping: icon('bag', 'shopping_bag'),
+  transport: icon('tram', 'tram'),
+  entertainment: icon('theatermasks', 'theater_comedy'),
+  circle: icon('circle', 'radio_button_unchecked'),
+  dragHandle: icon('line.3.horizontal', 'drag_indicator'),
 } as const satisfies Record<string, IconDefinition>;
 
 export type AppIconName = keyof typeof icons;
