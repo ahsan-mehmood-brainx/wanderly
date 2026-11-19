@@ -1,4 +1,5 @@
 import { type AppConfig } from '@/core/config/appConfig';
+import { type SqlDatabase } from '@/core/database/SqlDatabase';
 import { type HttpClientFactory } from '@/core/http/HttpClientFactory';
 import { type Logger } from '@/core/logging/Logger';
 import { type ConnectivityService } from '@/core/network/ConnectivityService';
@@ -17,6 +18,8 @@ export interface CoreDependencies {
   readonly keyValueStore: KeyValueStore;
   /** Encrypted storage for secrets such as auth tokens. */
   readonly secureStore: SecureKeyValueStore;
+  /** On-device SQLite database for structured data (trips). */
+  readonly database: SqlDatabase;
   readonly connectivity: ConnectivityService;
   readonly httpClientFactory: HttpClientFactory;
 }

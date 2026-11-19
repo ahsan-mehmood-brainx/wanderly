@@ -9,6 +9,7 @@ import { FakeDeviceLocationService } from '@/testing/FakeDeviceLocationService';
 import { FakeHttpClientFactory } from '@/testing/FakeHttpClient';
 import { ManualClock } from '@/testing/ManualClock';
 import { renderWithProviders } from '@/testing/renderWithProviders';
+import { seededTripDatabase, storedTrip } from '@/testing/tripFixtures';
 import { stubWeatherApi, WEATHER_NOW } from '@/testing/weatherFixtures';
 
 import { TripScreen } from './TripScreen';
@@ -16,7 +17,7 @@ import { TripWeatherScreen } from './TripWeatherScreen';
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
-  router: { push: jest.fn(), replace: jest.fn(), navigate: jest.fn() },
+  router: { push: jest.fn(), replace: jest.fn(), navigate: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => true) },
 }));
 
 async function setup(configure?: (location: FakeDeviceLocationService) => void) {
@@ -24,9 +25,11 @@ async function setup(configure?: (location: FakeDeviceLocationService) => void) 
   const openMeteo = stubWeatherApi(httpClientFactory);
   const location = new FakeDeviceLocationService();
   configure?.(location);
+  const { database } = await seededTripDatabase([storedTrip({ id: 't-1' })]);
   await renderWithProviders(<TripScreen tripId="t-1" />, {
-    dependencies: { httpClientFactory, deviceLocationService: location, clock: new ManualClock(WEATHER_NOW) },
+    dependencies: { database, httpClientFactory, deviceLocationService: location, clock: new ManualClock(WEATHER_NOW) },
   });
+  await screen.findByTestId('trip-screen');
   return { location, openMeteo, user: userEvent.setup() };
 }
 

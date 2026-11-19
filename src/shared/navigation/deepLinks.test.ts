@@ -20,6 +20,19 @@ describe('toAppPath', () => {
 });
 
 describe('resolveDeepLink', () => {
+  it.each([
+    ['wanderly://trips/new', routes.newTrip],
+    ['wanderly://trips/upcoming', routes.upcomingTrips],
+    ['wanderly://trips/completed', routes.completedTrips],
+    ['wanderly://trips/abc/edit', routes.editTrip('abc')],
+  ])('opens the trip screen %s', (url, href) => {
+    expect(resolveDeepLink(url)).toEqual(href);
+  });
+
+  it('rejects an edit link with a malformed trip id', () => {
+    expect(resolveDeepLink('wanderly://trips/a%20b/edit')).toBeNull();
+  });
+
   it('opens a destination, a trip and an itinerary item', () => {
     expect(resolveDeepLink('wanderly://destinations/kyoto')).toEqual(routes.destination('kyoto'));
     expect(resolveDeepLink('wanderly://trips/t-42')).toEqual(routes.trip('t-42'));

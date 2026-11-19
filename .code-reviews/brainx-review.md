@@ -1,33 +1,44 @@
 ---
-diff_hash: db055f9cb9d0c5a5363dbb830c116044f0d97b8ac84ccc30563d5cedc80b9f48
-reviewed_at: 2026-11-18T10:48:26Z
+diff_hash: 86c1782b71d48072a3097323b9a40bfdc4832233061737626baf5b06e11224b9
+reviewed_at: 2026-11-19T07:31:17Z
 ---
 
 ## Summary
 
-Merge of `develop` (`dd25d9d`, "Feat/weather foreground refresh (#3)") into `feat/feature-06-explore-map-nearby-places` (head `8cf3201`). Git's merge base is `7b5983c`.
+Feature 07, trip management, on `feat/feature-07-trip-management` (branched from `develop` at `9071ac2`). This adds offline trips: create, edit, cancel, restore and delete, stored in on-device SQLite with no backend and kept separate per signed-in account.
 
-Fresh review. A `brainx-review.md` existed, but it was the review for `2e58146` (explore map), which is committed and already finalized in the ledger by `8cf3201`. None of its findings concern this merge, so this review replaces it (same convention as the earlier develop merge reviews in this repo). `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, the convention prior reviews used. For this merge that diff is empty, so the value is the SHA-256 of empty input. No unstaged or untracked changes were present, so the staged/all prompt didn't apply.
+Fresh review. A `brainx-review.md` existed, but it was the review for the feature 06 merge, which is already committed and squash-merged into `develop` (#4). None of its findings concern this diff, so this review replaces it, following the convention of earlier reviews in this repo. `diff_hash` is `git diff --cached -- . ':!.code-reviews' | shasum -a 256`, also the earlier convention. Everything was already staged with `git add -A`, so option (b), all changes, applies.
 
-**What develop contains.** PRs #1 to #3 were squash-merged. Develop's tree is byte-identical to this branch's `caa55c8` (the commit before the map work) except for `.code-reviews/brainx-review.md`, so develop brings no code this branch lacks. Because of the squashes, git can't see the shared history, and the 3-way merge from `7b5983c` reports add/add conflicts on files both sides created. `git merge-tree --merge-base=caa55c8 HEAD origin/develop` (the true common content) conflicts only on `brainx-review.md`.
+**Scope (79 files).**
+- `core/database`: a `SqlDatabase` port, a serialised `SqliteDatabase` with lazy open, forward-only `PRAGMA user_version` migrations and transactions, and an expo-sqlite driver.
+- `features/trips`:
+  - Domain: the entity, `localDate`, derived status, validation and the overlap rule, money in minor units, ports, and use cases.
+  - Data: `LocalTripRepository`, a filesystem cover store, the image picker, the session-backed owner provider, and migrations.
+  - Presentation: the slice and selectors, hooks, sheets and six screens.
+- Integration: routes and deep links, DI, the store, en/es strings, `app.json` plugins (expo-sqlite, expo-image-picker, expo-asset), `metro.config.js` (wasm and COOP/COEP for web SQLite), docs, and test helpers (`node:sqlite`-backed driver, fixtures).
 
-**Conflicts (26), all resolved to this branch's version.** For each of the 25 code, config and docs files, develop's blob was checked to equal the `caa55c8` blob, and this branch's version differs only by the map feature (`2e58146`). Taking develop's side would revert that work. Files: `README.md`, `app.json`, `docs/ARCHITECTURE.md`, `jest.afterEnv.ts`, `jest.setup.ts`, `package.json`, `package-lock.json`, `src/app/(app)/(tabs)/(explore)/_layout.tsx`, `src/bootstrap/createAppContainer.ts`, `src/core/di/AppDependencies.ts`, `src/core/errors/AppError.ts`, `src/core/i18n/locales/en.ts`, `src/core/i18n/locales/es.ts`, `src/core/store/store.ts`, `src/features/discover/data/caching.ts`, `src/features/discover/data/caching.test.ts`, `src/features/discover/presentation/screens/DiscoverScreen.tsx`, `src/features/discover/presentation/screens/DiscoverScreen.test.tsx`, `src/shared/navigation/deepLinks.ts`, `src/shared/navigation/deepLinks.test.ts`, `src/shared/navigation/routes.ts`, `src/shared/ui/icons.ts`, `src/testing/createTestStore.ts`, `src/testing/testDependencies.ts`, plus the hook-owned `.code-reviews/ledger.jsonl` (develop's copy equals `caa55c8`'s; ours is a superset) and `.code-reviews/brainx-review.md` (replaced by this file).
+**Stack.** React (`react` in dependencies, no NestJS marker). The runtime is Expo SDK 58 / React Native 0.88, so React criteria were applied with RN semantics: `StyleSheet` and theme tokens instead of CSS classes, and Expo Router `Stack.Protected` guards instead of a `ProtectedRoute` HOC.
 
-**Result.** Apart from this review file, the merged tree is identical to `HEAD` (`8cf3201`). The auto-merge did not silently change, restore or delete any other file. After the merge, `develop` is an ancestor of the branch, so a PR to `develop` shows only the map work.
+**Checked in particular:**
+- Every SQL statement is parameterised and filtered on `owner_id`. Update and delete on another account's trip return `notFound`.
+- Use cases read the owner once and return `unauthorized` when signed out.
+- The slice drops its copy on sign-out, session expiry and sign-in, and ignores stale load and change results by request id.
+- Cover references are pattern-checked, so a tampered value can't escape `trip-covers/`. A copied photo is removed again when the save fails, and the old photo is removed only after the update commits.
+- The overlap rule uses half-open comparison in both SQL and the domain.
+- Date maths is UTC-anchored, so DST has no effect.
+- The leave guard and the save navigation don't loop.
+- Deep-link words (`new`, `upcoming`, `completed`) are matched before the trip-id pattern.
+- Migrations and their version bump commit atomically, and a newer schema is refused.
 
-**Scope.** The user asked for the complete changes to be reviewed, so the whole branch-versus-develop delta was re-read on the merged tree, not just the empty merge diff. That delta is the explore map feature (`features/map/`, about 3.1k lines of non-test source, 60 files) and its integration points: store and RTK Query middleware, DI container, Explore stack route, `/map` deep link allow-list, Discover Map button, `core/cache/MemoryCache` (moved out of discover), `locationServicesDisabled` error kind, en/es strings, icons, Jest setup (react-native-maps mock, `syncSafeAct`, `clearAllMocks`), README and ARCHITECTURE. Checked in particular: request throttle queueing and cancellation, 429 cooldown, cache keys (rounded centre, language), URL scheme filtering for websites, `geo:` label escaping, pin-change serialisation, RTK Query `currentData`/`data` use during refetch and after failures, stale-position refresh on foreground and "My location", camera moves gated on `onMapReady`, effect cleanups, and Android/web map availability.
+**Security (no finding).** No secrets were added. User text only ever reaches SQL as bound parameters. Rows read back are validated with zod and corrupt ones are skipped. Nothing renders HTML. The photo picker needs no library permission, and camera and microphone permissions are explicitly disabled. The separation between accounts is enforced by the app; the database file itself isn't encrypted (documented).
 
-Stack: React (`react` 19.3.0 in dependencies, no NestJS marker). The runtime is Expo SDK 58 / React Native 0.88, so React criteria were applied with RN semantics (`AppState`, `StyleSheet`, no DOM).
+**Verification on the staged tree.** `tsc --noEmit` exits 0, `expo lint` exits 0, and `prettier --check .` is clean. Jest passes 117 suites and 1342 tests. `expo export` succeeds for iOS, Android and web. Not run on a device or simulator.
 
-Security notes (no finding): no secrets added (the Google Maps key is read from app config at runtime and is not committed); place websites are limited to `http(s)` before opening; nothing renders HTML; saved pins are parsed entry by entry with zod; the centre sent to Overpass is rounded to 3 decimals.
+**Not reviewed in depth.** `package-lock.json` was checked for the dependency changes only (expo-sqlite, expo-image-picker, expo-file-system, expo-asset). `es.ts` was skimmed for parity with `en.ts`.
 
-Verification on the merged tree: `tsc --noEmit` exits 0, `expo lint` exits 0, `prettier --check .` is clean, and `jest` passes 102 suites / 1074 tests (1075 after the fix below). No conflict markers are present.
+**Cross-repo.** Only one repository is involved.
 
-Re-review (2026-11-18T10:48:26Z): the staged diff now also carries the fix for the one finding (`useExploreMap.ts`, `ExploreMapScreen.tsx`, its test, en/es strings, and ARCHITECTURE's edge-case table, which Prettier re-aligned). Only the finding's lines were re-evaluated; no new findings were raised.
-
-Not verified: `git fetch` failed (SSH key is passphrase-protected and not loaded in the agent), so the merge used the local `origin/develop` ref at `dd25d9d`, last updated 2026-11-18 15:26 +05:00. If develop moved after that, a follow-up merge is needed.
-
-Cross-repo: only one repository is involved.
+**Re-review (2026-11-19T07:31:17Z).** The staged diff now also includes the fix for the one finding: `dateRangeSelection.ts` and its test, and `DateRangeSheet.tsx`. Only the finding's lines were re-evaluated, and no new findings were raised. Re-verified: `tsc --noEmit` exits 0, `expo lint` exits 0, `prettier --check .` is clean, and Jest passes 117 suites and 1344 tests.
 
 ## Findings
 
@@ -35,57 +46,91 @@ Cross-repo: only one repository is involved.
 
 ### High (0)
 
-### Medium (1)
-- **src/features/map/presentation/hooks/useExploreMap.ts:229** — When places loaded but none belong to the selected categories, `placesState` is `ready` and the screen shows no markers and no message. *(correctness)*
+### Medium (0)
+
+### Low (1)
+- **src/features/trips/presentation/components/DateRangeSheet.tsx:56** — The calendar's month arrows have no bounds, and paging before January 1900 crashes the date sheet. *(correctness)*
   - status: fixed
-  - dev_reasoning: Fixed. Added a `noMatches` places state (places loaded, none of the selected categories) with an en/es message and a screen test; ARCHITECTURE's edge-case table lists it.
-  - ai_reasoning: Re-review. `useExploreMap.ts:231` now returns `{ status: 'noMatches' }` when the filtered `places` list is empty while categories are selected and places loaded (after the `empty` and `noCategories` checks, so those keep priority), and `places.length` is in the memo deps. `ExploreMapScreen` renders it as an info `InlineMessage` ("No places of the selected types nearby" / "No hay lugares de los tipos seleccionados cerca"). The new test "AC6 says when no loaded place is of the selected types" loads one restaurant, turns Restaurants off, expects the message, no markers and no new request, then turns it back on and expects the marker and no message. The test fails with the new branch removed and passes with it. Re-verified: `tsc --noEmit` 0, `expo lint` 0, `prettier --check .` clean, `jest` 102 suites / 1075 tests passing. Original issue: `placesState` handled "no places at all" (`empty`) and "every chip off" (`noCategories`), but not "chips on, zero matches", so in an area with only restaurants and hotels and only Museums selected the map was empty with no explanation, which looked the same as a stuck load. "no places at all" (`empty`) and "every chip off" (`noCategories`), but not "chips on, zero matches". Example: in an area with restaurants and hotels only, the user turns off everything except Museums. `filterPlaces` returns `[]`, `nearby.currentData.length > 0` and `categories.length > 0`, so the state is `ready` and `PlacesStatus` renders nothing. The map is empty with no explanation, which looks the same as a stuck load. The ARCHITECTURE edge-case table and the tests (`ExploreMapScreen.test.tsx`, AC6) cover only the two handled cases. Suggested fix: add a `noMatches` state when the filtered `places` list is empty while categories are selected, with an en/es message, and a screen test.
+  - dev_reasoning: Fixed. The visible month is clamped to January 1900 to December 9999, and the arrow at each end is disabled.
+  - ai_reasoning: Re-review. `moveMonth` now calls `shiftMonth`, which clamps the month index to January 1900 to December 9999, so `firstDay` is always a valid `LocalDate` and `dayOfWeek` can't throw. Each arrow is disabled when `canShiftMonth` says it can't move, and `AppIconButton` passes `disabled` through to its accessibility state. New tests cover year rollover, both clamps and `canShiftMonth` at each end. Original issue: `moveMonth` changed `visibleMonth` without limit. `parseLocalDate` rejects years before 1900, so for a month before 1900 the render calls `dayOfWeek(firstDay)`, and `toUtcDay` throws `RangeError`, a render error. It takes about 1,500 taps on "previous month" from today, so it's very unlikely in practice. Suggested fix: clamp the visible month to the supported range (January 1900 to December 9999), disable the arrow at each end, and test it.
 
 ## Reviewed files
-- .code-reviews/ledger.jsonl (merge resolution only; hook-owned)
 - README.md
 - app.json
 - docs/ARCHITECTURE.md
-- jest.afterEnv.ts
-- jest.setup.ts
+- metro.config.js
 - package.json
-- package-lock.json (dependency change only: react-native-maps 1.29.11)
-- src/app/(app)/(tabs)/(explore)/_layout.tsx
-- src/app/(app)/(tabs)/(explore)/map.tsx
+- package-lock.json (dependency changes only)
+- src/app/(app)/(tabs)/trips/[tripId]/edit.tsx
+- src/app/(app)/(tabs)/trips/_layout.tsx
+- src/app/(app)/(tabs)/trips/completed.tsx
+- src/app/(app)/(tabs)/trips/new.tsx
+- src/app/(app)/(tabs)/trips/upcoming.tsx
+- src/bootstrap/coreFactories.ts
 - src/bootstrap/createAppContainer.ts
-- src/core/cache/MemoryCache.ts
+- src/bootstrap/databaseMigrations.ts
+- src/core/database/ExpoSqliteDriver.ts
+- src/core/database/ExpoSqliteDriver.test.ts
+- src/core/database/SqlDatabase.ts
+- src/core/database/SqliteDatabase.ts
+- src/core/database/SqliteDatabase.test.ts
+- src/core/database/SqliteDriver.ts
+- src/core/database/migrations.ts
 - src/core/di/AppDependencies.ts
-- src/core/errors/AppError.ts
+- src/core/di/CoreDependencies.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts (skimmed for parity with en.ts)
 - src/core/store/store.ts
-- src/features/discover/data/caching.ts
-- src/features/discover/presentation/screens/DiscoverScreen.tsx
-- src/features/map/di.ts
-- src/features/map/data/*.ts and data/dto/*.ts (all 13 source files)
-- src/features/map/domain/*.ts and domain/usecases/*.ts (all 10 source files)
-- src/features/map/presentation/categoryIcons.ts
-- src/features/map/presentation/components/CategoryChips.tsx
-- src/features/map/presentation/components/MapCanvas.tsx
-- src/features/map/presentation/components/PlaceSheet.tsx
-- src/features/map/presentation/format.ts
-- src/features/map/presentation/hooks/useExploreMap.ts
-- src/features/map/presentation/hooks/useMapLocation.ts
-- src/features/map/presentation/mapAvailability.ts
-- src/features/map/presentation/screens/ExploreMapScreen.tsx
-- src/features/map/presentation/screens/ExploreMapScreen.web.tsx
-- src/features/map/presentation/state/mapApi.ts
-- src/features/map/presentation/state/mapSlice.ts
-- src/features/map/presentation/state/selectors.ts
+- src/features/trips/data/ExpoImagePickerService.ts
+- src/features/trips/data/ExpoImagePickerService.test.ts
+- src/features/trips/data/FileSystemTripCoverStore.ts
+- src/features/trips/data/FileSystemTripCoverStore.test.ts
+- src/features/trips/data/LocalTripRepository.ts
+- src/features/trips/data/LocalTripRepository.test.ts
+- src/features/trips/data/SessionTripOwnerProvider.ts
+- src/features/trips/data/SessionTripOwnerProvider.test.ts
+- src/features/trips/data/tripMigrations.ts
+- src/features/trips/di.ts
+- src/features/trips/domain/Trip.ts
+- src/features/trips/domain/localDate.ts
+- src/features/trips/domain/localDate.test.ts
+- src/features/trips/domain/money.ts
+- src/features/trips/domain/money.test.ts
+- src/features/trips/domain/repositories.ts
+- src/features/trips/domain/tripStatus.ts
+- src/features/trips/domain/tripStatus.test.ts
+- src/features/trips/domain/tripValidation.ts
+- src/features/trips/domain/tripValidation.test.ts
+- src/features/trips/domain/usecases/PickCoverImage.ts
+- src/features/trips/domain/usecases/tripUseCases.ts
+- src/features/trips/domain/usecases/tripUseCases.test.ts
+- src/features/trips/presentation/components/ConfirmSheet.tsx
+- src/features/trips/presentation/components/CurrencySheet.tsx
+- src/features/trips/presentation/components/DateRangeSheet.tsx
+- src/features/trips/presentation/components/DestinationSheet.tsx
+- src/features/trips/presentation/components/PickerField.tsx
+- src/features/trips/presentation/components/TripCard.tsx
+- src/features/trips/presentation/components/TripStatusBadge.tsx
+- src/features/trips/presentation/dateRangeSelection.ts
+- src/features/trips/presentation/dateRangeSelection.test.ts
+- src/features/trips/presentation/format.ts
+- src/features/trips/presentation/format.test.ts
+- src/features/trips/presentation/hooks/useToday.ts
+- src/features/trips/presentation/hooks/useTripForm.ts
+- src/features/trips/presentation/hooks/useTrips.ts
+- src/features/trips/presentation/screens/TripFormScreen.tsx
+- src/features/trips/presentation/screens/TripListScreen.tsx
+- src/features/trips/presentation/screens/TripScreen.tsx
+- src/features/trips/presentation/screens/TripScreen.test.tsx
+- src/features/trips/presentation/screens/TripsScreen.tsx
+- src/features/trips/presentation/screens/tripFlows.test.tsx
+- src/features/trips/presentation/state/selectors.ts
+- src/features/trips/presentation/state/tripsSlice.ts
+- src/features/trips/presentation/state/tripsSlice.test.ts
 - src/shared/navigation/deepLinks.ts
+- src/shared/navigation/deepLinks.test.ts
 - src/shared/navigation/routes.ts
 - src/shared/ui/icons.ts
-- src/testing/FakeLocationService.ts
-- src/testing/createTestStore.ts
-- src/testing/mapFixtures.ts (skimmed)
-- src/testing/syncSafeAct.ts
+- src/testing/nodeSqliteDriver.ts
 - src/testing/testDependencies.ts
-- `*.test.ts(x)` in the delta (skimmed for focus/skip markers and coverage of the finding above; all run and pass)
-
-## Skipped (hook-owned, not reviewed)
-- .code-reviews/records/ (generated records)
+- src/testing/tripFixtures.ts

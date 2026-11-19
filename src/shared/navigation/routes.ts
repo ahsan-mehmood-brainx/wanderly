@@ -39,6 +39,9 @@ export const routes = {
   home: '/',
   explore: '/explore',
   trips: '/trips',
+  newTrip: '/trips/new',
+  upcomingTrips: '/trips/upcoming',
+  completedTrips: '/trips/completed',
   budget: '/budget',
   profile: '/profile',
   settings: '/profile/settings',
@@ -53,6 +56,7 @@ export const routes = {
   destinationWeather: (destinationId: string) =>
     ({ pathname: '/destinations/[destinationId]/weather', params: { destinationId } }) satisfies Href,
   trip: (tripId: string) => ({ pathname: '/trips/[tripId]', params: { tripId } }) satisfies Href,
+  editTrip: (tripId: string) => ({ pathname: '/trips/[tripId]/edit', params: { tripId } }) satisfies Href,
   tripWeather: (tripId: string) => ({ pathname: '/trips/[tripId]/weather', params: { tripId } }) satisfies Href,
   itineraryItem: (tripId: string, itemId: string) =>
     ({ pathname: '/trips/[tripId]/itinerary/[itemId]', params: { tripId, itemId } }) satisfies Href,
