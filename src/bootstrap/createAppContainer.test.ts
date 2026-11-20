@@ -1,5 +1,6 @@
 import { type AppDependencies } from '@/core/di/AppDependencies';
 
+import { getAppliedLanguage } from './appliedLanguage';
 import { createAppContainer } from './createAppContainer';
 
 jest.mock('expo-network', () => ({
@@ -21,6 +22,12 @@ describe('createAppContainer (composition root)', () => {
     const { dependencies } = createAppContainer();
     const client = dependencies.httpClientFactory.create({ name: 'smoke', baseUrl: 'https://example.com' });
     expect(typeof client.get).toBe('function');
+  });
+
+  it('records the device language it started in, for PreferencesGate', () => {
+    const { i18n } = createAppContainer();
+    expect(i18n.language).toBe('en');
+    expect(getAppliedLanguage(i18n)).toBe('en');
   });
 
   it('wires feature use cases to the store', () => {

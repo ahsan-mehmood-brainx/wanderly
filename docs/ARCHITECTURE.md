@@ -288,7 +288,7 @@ src/app/
   (auth)/                Stack: sign-in, register                          (phase: auth)
   (app)/_layout.tsx      Drawer: custom content, swipe only on root screens (phase: app)
     (tabs)/_layout.tsx   NativeTabs: (home) · (explore) · trips · budget · profile, each a Stack
-    saved/               drawer-only destination (Saved Places)
+    saved/               drawer-only Stack: Saved Places (index) · collections/[collectionId]
 ```
 
 ### Protected navigation
@@ -606,3 +606,60 @@ Positions are 0..n-1 per day. Insert, update (including a move to another day), 
 ### Testing
 
 `testing/itineraryFixtures.ts` has `activity`, `activityInput`, `ITINERARY_TRIP` and `seededItineraryDatabase` (trips and activities in real in-memory SQLite). Domain functions, the repository (cascade, rollback, owner separation, corrupt rows, `CHECK`s), use cases and the slice have unit tests. `ReorderableActivityList.test.tsx` drives the drag with Gesture Handler's `fireGestureHandler`, and `itineraryFlows.test.tsx` covers the screens with `renderRouter`. `jest.setup.ts` loads Gesture Handler's Jest setup and mocks Worklets and Reanimated; Reanimated uses `testing/reanimatedMock.ts`, because the library's own mock imports its real entry point, which throws under jest-expo's native platform.
+
+## 16. Favorites and saved places
+
+`features/favorites/` lets a traveller save destinations, countries and map places (attractions, restaurants, landmarks), and sort them into collections. Like trips, everything lives in SQLite on the device, per account, and works offline. The Saved Places drawer entry (`/saved`) shows it.
+
+### Layers
+
+```
+presentation  FavoritesScreen (/saved) · CollectionDetailsScreen (/saved/collections/[collectionId])
+              SavedPlaceRow · CollectionCard · CollectionNameSheet · CollectionPickerSheet · SavedPlaceActionsSheet
+              FavoriteButton (DestinationScreen header, map PlaceSheet) · format
+              useFavorites · useFavoritesLoad · useFavoriteToggle · useCollection
+              favoritesSlice (mirror of SQLite, one change at a time) · selectors (by target, filtered, counts, collection)
+domain        Favorite / FavoriteTarget · favoriteTargetFromDestination · favoriteTargetFromPlace · Collection
+              collectionValidation · favoriteSearch · FavoritesRepository · GetFavorites · SaveFavorite · RemoveFavorite
+              CreateCollection · RenameCollection · DeleteCollection · SetFavoriteCollections · RemoveFromCollection
+data          LocalFavoritesRepository (SqlDatabase) · favoritesMigrations (version 3)
+```
+
+It reuses the trips `TripOwnerProvider` and `ConfirmSheet`, discover's `normalizeText`/`normalizeQuery`, `DestinationImage` and `Section`, and the map's `buildDirectionsUrls`.
+
+### Database
+
+Migration 3 creates three tables, all keyed by `owner_id`:
+
+- `favorites`: a snapshot of what was saved (name, subtitle, image URL, flag, coordinates, address, `saved_at`), so the list renders offline. `UNIQUE (owner_id, target_id)` keeps one row per saved destination or place, and `CHECK`s mirror the domain (known category, name not empty, both coordinates or neither).
+- `collections`: `PRIMARY KEY (owner_id, id)`, so every account has the four default collections under the same fixed ids. A `CHECK` requires a name for custom collections and a `default_key` for default ones.
+- `collection_items`: `PRIMARY KEY (owner_id, collection_id, favorite_id)`, so a place is in a collection at most once. It cascades from `collections (owner_id, id)` and from `favorites (id)`: deleting either side deletes the memberships, never the other side.
+
+Inserting a favorite uses `ON CONFLICT (owner_id, target_id) DO NOTHING` and then reads the stored row, so two saves of the same target (a double tap, two screens) return the same favorite. `setMemberships` checks the favorite and every collection inside one transaction and changes nothing (`notFound`) if one is missing.
+
+### Rules
+
+| Topic               | Rule                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Identity            | A target is the destination route id (`country-pt`, a curated slug, `place-…`) or the map place id (`osm:node/…`). The same place reached by two ids counts twice. |
+| Categories          | Countries → `country`; cities and places → `destination`; attractions, museums and parks → `attraction`; restaurants → `restaurant`; landmarks → `landmark`. Hotels can't be saved. |
+| Default collections | Want to Visit, Must Visit, Favorite Restaurants and Favorite Attractions, created with `INSERT OR IGNORE` on the first load and named from i18n. They can't be renamed or deleted (`forbidden`). |
+| Custom collections  | Name trimmed, 1 to 40 characters, unique among the account's custom collections ignoring case. At most 50 per account.                                     |
+| Membership          | Many to many. Saving a place adds it to no collection; the picker sets exactly the ticked ones. Removing a place from a collection keeps it saved.         |
+| Search and filter   | Name, subtitle and address, ignoring case and accents, combined with a category chip. Newest first.                                                         |
+| Removing            | Unsaving from a detail screen is immediate. Removing from Saved Places, and deleting a collection, ask first through `ConfirmSheet`.                        |
+
+### Edge cases
+
+| Case                      | Behaviour                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Double tap on Save        | The thunk `condition` allows one change at a time, and the database keeps one row per target.                                   |
+| Collection deleted        | Its memberships go with it; its places stay saved. A link to it shows "Collection not found".                                   |
+| Storage failure on load   | `AppErrorView` with `errorKind: 'storage'` and Try again.                                                                       |
+| Corrupt row               | Skipped with a warning, together with memberships that point at it.                                                             |
+| Offline                   | Everything works. Opening a saved destination needs a connection, as the destination screen always has.                       |
+| Sign-out, expiry, sign-in | `favoritesSlice` resets and ignores results from requests started before. Rows stay in SQLite for when the account signs back in. |
+
+### Testing
+
+`testing/favoritesFixtures.ts` has `favoriteTarget`, `favorite`, `restaurantFavorite`, `customCollection` and `seededFavoritesDatabase` (real in-memory SQLite). Domain functions, the repository (constraints, duplicates, cascades, owner separation, corrupt rows, upgrade from version 2, persistence across connections), use cases and the slice have unit tests. `favoritesFlows.test.tsx` covers the screens with `renderRouter`, and `saveFromDetails.test.tsx` covers Save on the destination screen and the map sheet.

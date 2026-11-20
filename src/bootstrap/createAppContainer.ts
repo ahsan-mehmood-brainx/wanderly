@@ -8,6 +8,7 @@ import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore, type AppStore } from '@/core/store/store';
 import { authFactories } from '@/features/auth/di';
 import { discoverFactories } from '@/features/discover/di';
+import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
@@ -16,6 +17,7 @@ import { resolveLanguage } from '@/features/preferences/domain/resolvePreference
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
+import { setAppliedLanguage } from './appliedLanguage';
 import { createCoreFactories } from './coreFactories';
 
 export interface AppContainer {
@@ -36,6 +38,9 @@ export function createAppContainer(): AppContainer {
     getLocales().map((locale) => locale.languageCode),
   );
   const i18n = createI18n(deviceLanguage);
+  // Record what "system" resolved to here, so PreferencesGate applies a device
+  // language that changed before preferences finished loading.
+  setAppliedLanguage(i18n, deviceLanguage);
 
   const dependencies = createContainer<AppDependencies>({
     ...createCoreFactories({ config: createAppConfig(), getLanguage: () => i18n.language }),
@@ -47,6 +52,7 @@ export function createAppContainer(): AppContainer {
     ...mapFactories,
     ...tripsFactories,
     ...itineraryFactories,
+    ...favoritesFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

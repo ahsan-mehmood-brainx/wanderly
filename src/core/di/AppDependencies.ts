@@ -1,5 +1,6 @@
 import { type AuthDependencies } from '@/features/auth/di';
 import { type DiscoverDependencies } from '@/features/discover/di';
+import { type FavoritesDependencies } from '@/features/favorites/di';
 import { type ItineraryDependencies } from '@/features/itinerary/di';
 import { type MapDependencies } from '@/features/map/di';
 import { type OnboardingDependencies } from '@/features/onboarding/di';
@@ -27,4 +28,5 @@ export type AppDependencies = CoreDependencies &
   WeatherDependencies &
   MapDependencies &
   TripsDependencies &
-  ItineraryDependencies;
+  ItineraryDependencies &
+  FavoritesDependencies;

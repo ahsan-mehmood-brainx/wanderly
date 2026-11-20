@@ -45,6 +45,9 @@ export const icons = {
   eye: icon('eye', 'visibility'),
   eyeOff: icon('eye.slash', 'visibility_off'),
   favorite: icon('heart', 'favorite'),
+  // Saved state. Android and web draw Material Symbols outlined (no fill), so they
+  // need a different glyph from `favorite`, not only a different color.
+  favoriteFilled: icon('heart.fill', 'heart_check'),
   filter: icon('line.3.horizontal.decrease', 'tune'),
   flag: icon('flag', 'flag'),
   flight: icon('airplane', 'flight'),

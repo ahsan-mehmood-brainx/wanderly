@@ -7,6 +7,7 @@ import { createContainer, type Factories, valueFactories } from '@/core/di/creat
 import { type LogContext, type Logger } from '@/core/logging/Logger';
 import { authFactories } from '@/features/auth/di';
 import { discoverFactories } from '@/features/discover/di';
+import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
@@ -70,6 +71,7 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...mapFactories,
     ...tripsFactories,
     ...itineraryFactories,
+    ...favoritesFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.

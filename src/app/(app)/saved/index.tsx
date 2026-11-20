@@ -1,5 +1,5 @@
-import { SavedPlacesScreen } from '@/features/saved-places/presentation/screens/SavedPlacesScreen';
+import { FavoritesScreen } from '@/features/favorites/presentation/screens/FavoritesScreen';
 
 export default function SavedPlacesRoute() {
-  return <SavedPlacesScreen />;
+  return <FavoritesScreen />;
 }

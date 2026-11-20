@@ -37,6 +37,10 @@ export interface NewActivityRouteParams extends Record<string, string | undefine
   readonly date?: string;
 }
 
+export interface CollectionRouteParams extends Record<string, string> {
+  readonly collectionId: string;
+}
+
 export interface SignInRouteParams extends Record<string, string | undefined> {
   /** `demo` pre-fills the demo account (used after the demo sign-up). */
   readonly prefill?: 'demo';
@@ -59,6 +63,8 @@ export const routes = {
   settings: '/profile/settings',
   designSystem: '/profile/design-system',
   savedPlaces: '/saved',
+  collection: (collectionId: string) =>
+    ({ pathname: '/saved/collections/[collectionId]', params: { collectionId } }) satisfies Href,
   map: '/map',
   signIn: '/sign-in',
   register: '/register',

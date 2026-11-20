@@ -268,7 +268,7 @@ describe('LocalActivityRepository', () => {
     });
 
     it('is migration 2, after the trips table', () => {
-      expect(APP_MIGRATIONS.map(({ version }) => version)).toEqual([1, 2]);
+      expect(APP_MIGRATIONS.map(({ version }) => version).slice(0, 2)).toEqual([1, 2]);
     });
 
     it('creates the owner, trip, date and position index', async () => {
