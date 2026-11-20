@@ -1,10 +1,13 @@
 import { router, Stack } from 'expo-router';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
 import { useDependencies } from '@/core/di/DependenciesProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { favoriteTargetFromDestination } from '@/features/favorites/domain/Favorite';
+import { FavoriteButton } from '@/features/favorites/presentation/components/FavoriteButton';
+import { useFavoriteToggle } from '@/features/favorites/presentation/hooks/useFavoriteToggle';
 import { openExternalUrl } from '@/shared/navigation/openExternalUrl';
 import { routes } from '@/shared/navigation/routes';
 import {
@@ -43,6 +46,9 @@ interface DestinationScreenProps {
 export function DestinationScreen({ destinationId }: DestinationScreenProps) {
   const { t } = useTranslation();
   const { details, loading, errorKind, retry, refreshing } = useDestinationDetails(destinationId);
+  // Nothing can be saved until the details are loaded.
+  const favoriteTarget = useMemo(() => (details ? favoriteTargetFromDestination(details) : null), [details]);
+  const favorite = useFavoriteToggle(favoriteTarget);
 
   if (loading) return <AppLoader label={t('destination.loading')} fullScreen testID="destination-loading" />;
   if (errorKind || !details) {
@@ -60,7 +66,19 @@ export function DestinationScreen({ destinationId }: DestinationScreenProps) {
   const title = details.kind === 'country' ? details.country.name : details.name;
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerRight: () => (
+            <FavoriteButton saved={favorite.saved} saving={favorite.saving} onPress={() => void favorite.toggle()} />
+          ),
+        }}
+      />
+      {favorite.errorKind ? (
+        <InlineMessage tone="danger" icon="error" message={t('savedPlaces.saveFailed')} />
+      ) : favorite.savedStateUnknown ? (
+        <InlineMessage tone="warning" icon="warning" message={t('savedPlaces.savedStateUnknown')} />
+      ) : null}
       {details.kind === 'country' ? (
         <CountryDetails details={details} onRetry={retry} refreshing={refreshing} />
       ) : (

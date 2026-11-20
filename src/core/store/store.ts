@@ -4,6 +4,8 @@ import { type AppDependencies } from '@/core/di/AppDependencies';
 import { authReducer } from '@/features/auth/presentation/state/authSlice';
 import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
 import { discoverReducer } from '@/features/discover/presentation/state/discoverSlice';
+import { favoritesReducer } from '@/features/favorites/presentation/state/favoritesSlice';
+import { itineraryReducer } from '@/features/itinerary/presentation/state/itinerarySlice';
 import { mapApi } from '@/features/map/presentation/state/mapApi';
 import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
@@ -21,6 +23,8 @@ const rootReducer = combineReducers({
   map: mapReducer,
   [mapApi.reducerPath]: mapApi.reducer,
   trips: tripsReducer,
+  itinerary: itineraryReducer,
+  favorites: favoritesReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;

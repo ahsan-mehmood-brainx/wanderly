@@ -1,9 +1,12 @@
 import { useLocales } from 'expo-localization';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { favoriteTargetFromPlace } from '@/features/favorites/domain/Favorite';
+import { FavoriteButton } from '@/features/favorites/presentation/components/FavoriteButton';
+import { useFavoriteToggle } from '@/features/favorites/presentation/hooks/useFavoriteToggle';
 import { AppBottomSheet, AppButton, AppIcon, type AppIconName, AppText, InlineMessage } from '@/shared/ui';
 
 import { PLACE_CATEGORY_ICONS } from '../categoryIcons';
@@ -43,7 +46,7 @@ function DetailRow({
   );
 }
 
-/** Details of the selected place or pin, with Directions (and Remove for a pin). */
+/** Details of the selected place or pin, with Directions, Save for places (not hotels), and Remove for a pin. */
 export function PlaceSheet({
   selection,
   onClose,
@@ -63,6 +66,11 @@ export function PlaceSheet({
     setWebsiteFailed(false);
   }
   const current = selection ?? shown;
+  const favoriteTarget = useMemo(
+    () => (current?.type === 'place' ? favoriteTargetFromPlace(current.place) : null),
+    [current],
+  );
+  const favorite = useFavoriteToggle(favoriteTarget);
 
   let title: string | undefined;
   let content = null;
@@ -124,8 +132,21 @@ export function PlaceSheet({
         {directionsFailed ? (
           <InlineMessage tone="danger" icon="error" message={t('map.sheet.directionsFailed')} />
         ) : null}
+        {favorite.errorKind ? (
+          <InlineMessage tone="danger" icon="error" message={t('savedPlaces.saveFailed')} />
+        ) : favorite.savedStateUnknown ? (
+          <InlineMessage tone="warning" icon="warning" message={t('savedPlaces.savedStateUnknown')} />
+        ) : null}
         <View style={[styles.actions, { gap: spacing.sm }]}>
           <AppButton label={t('map.sheet.directions')} leftIcon="directions" onPress={onDirections} />
+          {favoriteTarget ? (
+            <FavoriteButton
+              variant="button"
+              saved={favorite.saved}
+              saving={favorite.saving}
+              onPress={() => void favorite.toggle()}
+            />
+          ) : null}
           {current?.type === 'pin' ? (
             <AppButton label={t('map.sheet.remove')} variant="outline" leftIcon="close" onPress={onRemovePin} />
           ) : null}

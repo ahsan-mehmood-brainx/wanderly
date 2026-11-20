@@ -45,6 +45,9 @@ export const icons = {
   eye: icon('eye', 'visibility'),
   eyeOff: icon('eye.slash', 'visibility_off'),
   favorite: icon('heart', 'favorite'),
+  // Saved state. Android and web draw Material Symbols outlined (no fill), so they
+  // need a different glyph from `favorite`, not only a different color.
+  favoriteFilled: icon('heart.fill', 'heart_check'),
   filter: icon('line.3.horizontal.decrease', 'tune'),
   flag: icon('flag', 'flag'),
   flight: icon('airplane', 'flight'),
@@ -121,6 +124,13 @@ export const icons = {
   landmark: icon('building.columns.circle', 'castle'),
   directions: icon('arrow.triangle.turn.up.right.diamond', 'directions'),
   pin: icon('mappin', 'push_pin'),
+
+  // Itinerary: activity categories, completion and reordering.
+  shopping: icon('bag', 'shopping_bag'),
+  transport: icon('tram', 'tram'),
+  entertainment: icon('theatermasks', 'theater_comedy'),
+  circle: icon('circle', 'radio_button_unchecked'),
+  dragHandle: icon('line.3.horizontal', 'drag_indicator'),
 } as const satisfies Record<string, IconDefinition>;
 
 export type AppIconName = keyof typeof icons;

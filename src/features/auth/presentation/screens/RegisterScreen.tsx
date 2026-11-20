@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { type TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
@@ -17,7 +18,7 @@ import {
 import { AuthScreenLayout } from '../components/AuthScreenLayout';
 import { useRegisterForm } from '../hooks/useRegisterForm';
 
-type Translate = ReturnType<typeof useTranslation>['t'];
+type Translate = TFunction;
 
 function validationMessage(t: Translate, field: RegistrationField, issue: ValidationIssue | undefined) {
   if (!issue) return undefined;

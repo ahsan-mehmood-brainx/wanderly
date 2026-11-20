@@ -73,6 +73,38 @@ describe('resolveDeepLink', () => {
   });
 });
 
+describe('itinerary deep links', () => {
+  it('opens the add-activity form for a trip, not an item called "new"', () => {
+    expect(resolveDeepLink('wanderly://trips/t-42/itinerary/new')).toEqual({
+      pathname: '/trips/[tripId]/itinerary/new',
+      params: { tripId: 't-42' },
+    });
+  });
+
+  it('opens the edit form of an activity', () => {
+    expect(resolveDeepLink('wanderly://trips/t-42/itinerary/day2_lunch/edit')).toEqual({
+      pathname: '/trips/[tripId]/itinerary/[itemId]/edit',
+      params: { tripId: 't-42', itemId: 'day2_lunch' },
+    });
+  });
+
+  it('opens one day of the itinerary when the date is a real calendar date', () => {
+    expect(resolveDeepLink('wanderly://trips/t-42/itinerary/day/2027-07-01')).toEqual({
+      pathname: '/trips/[tripId]/itinerary/day/[date]',
+      params: { tripId: 't-42', date: '2027-07-01' },
+    });
+    expect(resolveDeepLink('/trips/t-42/itinerary/day/2027-02-30')).toBeNull();
+    expect(resolveDeepLink('/trips/t-42/itinerary/day/today')).toBeNull();
+    expect(resolveDeepLink('/trips/a%20b/itinerary/day/2027-07-01')).toBeNull();
+  });
+
+  it('keeps rejecting malformed itinerary links', () => {
+    expect(resolveDeepLink('/trips/a%20b/itinerary/new')).toBeNull();
+    expect(resolveDeepLink('/trips/t-42/itinerary/a%20b/edit')).toBeNull();
+    expect(resolveDeepLink('/trips/t-42/itinerary/day2_lunch/delete')).toBeNull();
+  });
+});
+
 describe('destination deep links', () => {
   it('accepts every destination id form, including long encoded place ids', () => {
     expect(resolveDeepLink('wanderly://destinations/country-pt')).toEqual(routes.destination('country-pt'));

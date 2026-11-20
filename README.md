@@ -83,7 +83,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 1   | Destination discovery and search: Explore feed, search with filters and history, destination details  | Done    |
 | 2   | Weather: Open-Meteo forecasts on destinations and trips, full forecast screen, offline copy           | Done    |
 | 3   | Nearby places and map: OpenStreetMap places and search, filters, pins, directions                     | Done    |
-| 4   | Trips and itineraries                                                                                 | Planned |
+| 4   | Trips and itineraries: trips in SQLite; day-by-day itinerary with drag-and-drop, conflicts, progress  | Done    |
 | 5   | Expense tracking                                                                                      | Planned |
 | 6   | Favourites                                                                                            | Planned |
 | 7   | Offline support                                                                                       | Planned |
@@ -118,7 +118,10 @@ The `wanderly://` scheme opens:
 | `wanderly://trips/completed`                      | Completed trips                      |
 | `wanderly://trips/<tripId>`                       | Trip                                 |
 | `wanderly://trips/<tripId>/edit`                  | Edit trip                            |
-| `wanderly://trips/<tripId>/itinerary/<itemId>`    | Itinerary item                       |
+| `wanderly://trips/<tripId>/itinerary/day/<date>`  | One day of the itinerary             |
+| `wanderly://trips/<tripId>/itinerary/new`         | Add activity                         |
+| `wanderly://trips/<tripId>/itinerary/<itemId>`    | Activity                             |
+| `wanderly://trips/<tripId>/itinerary/<itemId>/edit` | Edit activity                      |
 | `wanderly://destinations/<destinationId>/weather` | Destination forecast                 |
 | `wanderly://trips/<tripId>/weather`               | Forecast where you are (from a trip) |
 | `wanderly://map`                                  | Explore map (iOS and Android)        |

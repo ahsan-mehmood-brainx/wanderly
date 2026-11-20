@@ -1,6 +1,7 @@
 import { type Href } from 'expo-router';
 
 import { Subject, type Unsubscribe } from '@/core/events/Subject';
+import { isLocalDate } from '@/features/trips/domain/localDate';
 
 import { parseDestinationRouteId, parseRouteId, routes } from './routes';
 
@@ -84,12 +85,37 @@ export function resolveDeepLink(rawUrl: string): Href | null {
     const tripId = parseRouteId(segments[1]);
     return tripId ? routes.tripWeather(tripId) : null;
   }
-  if (segments[0] === 'trips' && segments.length === 4 && segments[2] === 'itinerary') {
-    const tripId = parseRouteId(segments[1]);
-    const itemId = parseRouteId(segments[3]);
-    return tripId && itemId ? routes.itineraryItem(tripId, itemId) : null;
+  if (segments[0] === 'trips' && segments[2] === 'itinerary') return resolveItineraryLink(segments);
+  return null;
+}
+
+/** Itinerary screen names that sit beside `[itemId]`; generated activity ids never take these values. */
+const ITINERARY_SCREEN_WORDS: ReadonlySet<string> = new Set(['new', 'day']);
+
+/** `/trips/:tripId/itinerary/…`. The bare itinerary path isn't replayed; only its screens below are. */
+function resolveItineraryLink(segments: readonly string[]): Href | null {
+  const tripId = parseRouteId(segments[1]);
+  if (!tripId) return null;
+  // Checked before the item pattern: `new` is the add-activity form, not an activity id.
+  if (segments.length === 4 && segments[3] === 'new') return routes.newActivity(tripId);
+  if (segments.length === 4) {
+    const itemId = parseItineraryItemId(segments[3]);
+    return itemId ? routes.itineraryItem(tripId, itemId) : null;
+  }
+  if (segments.length === 5 && segments[3] === 'day') {
+    const date = segments[4];
+    return isLocalDate(date) ? routes.itineraryDay(tripId, date) : null;
+  }
+  if (segments.length === 5 && segments[4] === 'edit') {
+    const itemId = parseItineraryItemId(segments[3]);
+    return itemId ? routes.editActivity(tripId, itemId) : null;
   }
   return null;
+}
+
+function parseItineraryItemId(segment: string | undefined): string | null {
+  const itemId = parseRouteId(segment);
+  return itemId && !ITINERARY_SCREEN_WORDS.has(itemId) ? itemId : null;
 }
 
 function safeDecode(segment: string): string {
