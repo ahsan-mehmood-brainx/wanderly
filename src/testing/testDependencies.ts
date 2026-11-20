@@ -13,6 +13,7 @@ import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { preferencesFactories } from '@/features/preferences/di';
+import { profileFactories } from '@/features/profile/di';
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
@@ -23,6 +24,7 @@ import { FakeLocationService } from './FakeLocationService';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
 import { nodeSqliteDriver } from './nodeSqliteDriver';
+import { FakeProfilePhotoStore } from './profileFixtures';
 import { FakeImagePickerService, FakeTripCoverStore, FakeTripOwnerProvider } from './tripFixtures';
 
 export const TEST_RESTCOUNTRIES_API_KEY = 'test-restcountries-key';
@@ -74,6 +76,7 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...itineraryFactories,
     ...favoritesFactories,
     ...budgetFactories,
+    ...profileFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.
@@ -84,6 +87,7 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     // No native file system or photo picker in tests.
     tripCoverStore: () => new FakeTripCoverStore(),
     imagePickerService: () => new FakeImagePickerService(),
+    profilePhotoStore: () => new FakeProfilePhotoStore(),
     ...valueFactories(overrides),
   });
 }

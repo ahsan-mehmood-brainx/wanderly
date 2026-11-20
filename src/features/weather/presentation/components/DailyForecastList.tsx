@@ -92,7 +92,8 @@ function RangeBar({ span, low, high }: { span: TemperatureSpan | null; low: numb
           style={[
             styles.fill,
             {
-              left: `${position.start * 100}%`,
+              // Logical `start`, so the fill flips with the min/max labels in RTL.
+              start: `${position.start * 100}%`,
               width: `${Math.max(position.end - position.start, 0.04) * 100}%`,
               backgroundColor: colors.primary,
               borderRadius: radii.pill,

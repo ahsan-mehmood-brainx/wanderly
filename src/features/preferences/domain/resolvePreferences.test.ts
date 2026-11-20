@@ -1,4 +1,4 @@
-import { resolveColorScheme, resolveLanguage } from './resolvePreferences';
+import { resolveColorScheme, resolveCurrency, resolveLanguage } from './resolvePreferences';
 
 describe('resolveColorScheme', () => {
   it('uses an explicit preference regardless of the system scheme', () => {
@@ -34,5 +34,28 @@ describe('resolveLanguage', () => {
   it('falls back to English when no device language is supported', () => {
     expect(resolveLanguage('system', ['ja', null, undefined])).toBe('en');
     expect(resolveLanguage('system', [])).toBe('en');
+  });
+
+  it('TC-01 resolves an Urdu device locale to Urdu', () => {
+    expect(resolveLanguage('system', ['ur'])).toBe('ur');
+    expect(resolveLanguage('system', ['de', 'UR', 'en'])).toBe('ur');
+    expect(resolveLanguage('ur', ['en'])).toBe('ur');
+  });
+});
+
+describe('resolveCurrency', () => {
+  it('TC-06 uses an explicit currency regardless of the device region', () => {
+    expect(resolveCurrency('EUR', 'USD')).toBe('EUR');
+    expect(resolveCurrency('PKR', null)).toBe('PKR');
+  });
+
+  it('TC-06 follows the device region currency for "system" when trips support it', () => {
+    expect(resolveCurrency('system', 'GBP')).toBe('GBP');
+  });
+
+  it('TC-06 falls back to USD for "system" when the region currency is unsupported or unknown', () => {
+    expect(resolveCurrency('system', 'XOF')).toBe('USD');
+    expect(resolveCurrency('system', null)).toBe('USD');
+    expect(resolveCurrency('system', undefined)).toBe('USD');
   });
 });

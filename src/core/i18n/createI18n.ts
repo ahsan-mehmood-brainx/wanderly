@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 import { FALLBACK_LANGUAGE, SUPPORTED_LANGUAGES, type SupportedLanguage } from './languages';
 import { en } from './locales/en';
 import { es } from './locales/es';
+import { ur } from './locales/ur';
 
 /**
  * Creates an isolated, synchronously initialised i18next instance.
@@ -15,6 +16,7 @@ export function createI18n(language: SupportedLanguage): i18n {
     resources: {
       en: { translation: en },
       es: { translation: es },
+      ur: { translation: ur },
     },
     lng: language,
     fallbackLng: FALLBACK_LANGUAGE,

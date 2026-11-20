@@ -3,7 +3,7 @@ import { type Logger } from '@/core/logging/Logger';
 import { err, type Result } from '@/core/result';
 import { type UseCase } from '@/core/usecase/UseCase';
 
-import { type Preferences } from '../Preferences';
+import { applyPreferenceChanges, type PreferenceChanges } from '../Preferences';
 import { type PreferencesRepository } from '../PreferencesRepository';
 
 /**
@@ -15,7 +15,7 @@ import { type PreferencesRepository } from '../PreferencesRepository';
  * Saves run one at a time, so two quick changes cannot both read the same
  * snapshot and drop each other's field. Never throws; failures are logged and returned.
  */
-export class SavePreferences implements UseCase<Partial<Preferences>, Result<void, AppError>> {
+export class SavePreferences implements UseCase<PreferenceChanges, Result<void, AppError>> {
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -23,20 +23,20 @@ export class SavePreferences implements UseCase<Partial<Preferences>, Result<voi
     private readonly logger: Logger,
   ) {}
 
-  execute(changes: Partial<Preferences>): Promise<Result<void, AppError>> {
+  execute(changes: PreferenceChanges): Promise<Result<void, AppError>> {
     const run = this.queue.then(() => this.mergeAndSave(changes));
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  private async mergeAndSave(changes: Partial<Preferences>): Promise<Result<void, AppError>> {
+  private async mergeAndSave(changes: PreferenceChanges): Promise<Result<void, AppError>> {
     try {
       const current = await this.repository.load();
       if (!current.ok) {
         this.logger.error('Could not read preferences before saving; nothing was written', current.error);
         return err(current.error);
       }
-      const result = await this.repository.save({ ...current.value, ...changes });
+      const result = await this.repository.save(applyPreferenceChanges(current.value, changes));
       if (!result.ok) this.logger.error('Could not save preferences', result.error);
       return result;
     } catch (error) {

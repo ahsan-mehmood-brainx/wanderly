@@ -12,12 +12,13 @@ function setup(repository = new MockPreferencesRepository()) {
 
 describe('LoadPreferences', () => {
   it('returns stored preferences', async () => {
-    const { useCase } = setup(new MockPreferencesRepository({ theme: 'dark', language: 'es' }));
-    await expect(useCase.execute()).resolves.toEqual({ theme: 'dark', language: 'es' });
+    const stored = { ...DEFAULT_PREFERENCES, theme: 'dark', language: 'es' } as const;
+    const { useCase } = setup(new MockPreferencesRepository(stored));
+    await expect(useCase.execute()).resolves.toEqual(stored);
   });
 
   it('falls back to defaults and logs when the repository reports an error', async () => {
-    const repository = new MockPreferencesRepository({ theme: 'dark', language: 'es' });
+    const repository = new MockPreferencesRepository({ ...DEFAULT_PREFERENCES, theme: 'dark', language: 'es' });
     repository.loadError = new AppError('storage', 'unreadable');
     const { useCase, logger } = setup(repository);
 

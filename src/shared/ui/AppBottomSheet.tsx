@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { useReduceMotion } from '@/shared/hooks/useReduceMotion';
 
@@ -42,6 +43,7 @@ const SPRING = { damping: 28, stiffness: 260, mass: 1, useNativeDriver: true } a
 export function AppBottomSheet({ visible, onClose, title, children, dismissible = true, testID }: AppBottomSheetProps) {
   const { t } = useTranslation();
   const { colors, spacing, radii, sizes, shadows, motion } = useAppTheme();
+  const { direction } = useLayoutDirection();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
@@ -147,6 +149,8 @@ export function AppBottomSheet({ visible, onClose, title, children, dismissible 
             styles.sheet,
             shadows.lg,
             {
+              // A Modal is a separate native root, so the app's direction isn't inherited.
+              direction,
               maxHeight: windowHeight * MAX_HEIGHT_RATIO,
               backgroundColor: colors.surface,
               borderTopLeftRadius: radii.xl,

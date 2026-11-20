@@ -5,7 +5,13 @@ import { type Logger } from '@/core/logging/Logger';
 import { err, ok, type Result } from '@/core/result';
 import { type KeyValueStore } from '@/core/storage/KeyValueStore';
 
-import { DEFAULT_PREFERENCES, LANGUAGE_PREFERENCES, THEME_PREFERENCES, type Preferences } from '../domain/Preferences';
+import {
+  CURRENCY_PREFERENCES,
+  DEFAULT_PREFERENCES,
+  LANGUAGE_PREFERENCES,
+  THEME_PREFERENCES,
+  type Preferences,
+} from '../domain/Preferences';
 import { type PreferencesRepository } from '../domain/PreferencesRepository';
 
 export const PREFERENCES_STORAGE_KEY = 'preferences.v1';
@@ -14,9 +20,18 @@ export const PREFERENCES_STORAGE_KEY = 'preferences.v1';
  * Each field falls back independently, so one corrupted or outdated value
  * (e.g. a removed language) never discards the user's other choices.
  */
+const flag = (fallback: boolean) => z.boolean().catch(fallback);
+
 const storedPreferencesSchema = z.object({
   theme: z.enum(THEME_PREFERENCES).catch(DEFAULT_PREFERENCES.theme),
   language: z.enum(LANGUAGE_PREFERENCES).catch(DEFAULT_PREFERENCES.language),
+  currency: z.enum(CURRENCY_PREFERENCES).catch(DEFAULT_PREFERENCES.currency),
+  notifications: z
+    .object({
+      tripReminders: flag(DEFAULT_PREFERENCES.notifications.tripReminders),
+      budgetAlerts: flag(DEFAULT_PREFERENCES.notifications.budgetAlerts),
+    })
+    .catch(DEFAULT_PREFERENCES.notifications),
 });
 
 function parseJson(raw: string): unknown {

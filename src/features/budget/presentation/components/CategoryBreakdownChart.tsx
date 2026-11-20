@@ -46,7 +46,7 @@ export function CategoryBreakdownChart({ totals, currency }: CategoryBreakdownCh
                 {name}
               </AppText>
               <AppText variant="label">{money}</AppText>
-              <AppText variant="caption" color="textSecondary" style={styles.share}>
+              <AppText variant="caption" color="textSecondary" align="end" style={styles.share}>
                 {percent}
               </AppText>
             </View>
@@ -67,7 +67,7 @@ const SHARE_WIDTH = 44;
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
   fill: { flex: 1 },
-  share: { width: SHARE_WIDTH, textAlign: 'right' },
+  share: { width: SHARE_WIDTH },
   track: { height: BAR_HEIGHT, overflow: 'hidden' },
   bar: { height: BAR_HEIGHT },
 });

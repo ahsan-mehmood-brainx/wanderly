@@ -11,6 +11,7 @@ import { mapApi } from '@/features/map/presentation/state/mapApi';
 import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
+import { profileReducer } from '@/features/profile/presentation/state/profileSlice';
 import { tripsReducer } from '@/features/trips/presentation/state/tripsSlice';
 import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
 
@@ -27,6 +28,7 @@ const rootReducer = combineReducers({
   itinerary: itineraryReducer,
   favorites: favoritesReducer,
   budget: budgetReducer,
+  profile: profileReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;

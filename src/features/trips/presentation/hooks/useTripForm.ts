@@ -4,19 +4,22 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useDependencies } from '@/core/di/DependenciesProvider';
 import { type AppErrorKind } from '@/core/errors/AppError';
 import { useAppDispatch, useAppSelector } from '@/core/store/hooks';
+import { type CurrencyPreference } from '@/features/preferences/domain/Preferences';
+import { resolveCurrency } from '@/features/preferences/domain/resolvePreferences';
+import { selectCurrencyPreference } from '@/features/preferences/presentation/state/selectors';
 
-import { DEFAULT_TRIP_CURRENCY, formatAmountInput, TRIP_CURRENCIES } from '../../domain/money';
+import { formatAmountInput } from '../../domain/money';
 import { type Trip, type TripDestination, type TripInput } from '../../domain/Trip';
 import { type TripField, type TripValidationErrors } from '../../domain/tripValidation';
 import { selectTripsSaving } from '../state/selectors';
 import { createTrip, updateTrip } from '../state/tripsSlice';
 
-function defaultCurrency(): string {
-  const code = getLocales()[0]?.currencyCode;
-  return code && (TRIP_CURRENCIES as readonly string[]).includes(code) ? code : DEFAULT_TRIP_CURRENCY;
+/** The currency chosen in Settings, or for "Device region" the region's currency when trips offer it. */
+function defaultCurrency(preference: CurrencyPreference): string {
+  return resolveCurrency(preference, getLocales()[0]?.currencyCode);
 }
 
-function initialInput(trip: Trip | null): TripInput {
+function initialInput(trip: Trip | null, currencyPreference: CurrencyPreference): TripInput {
   if (!trip) {
     return {
       title: '',
@@ -26,7 +29,7 @@ function initialInput(trip: Trip | null): TripInput {
       description: '',
       coverImage: null,
       budget: '',
-      currency: defaultCurrency(),
+      currency: defaultCurrency(currencyPreference),
     };
   }
   return {
@@ -58,8 +61,9 @@ export function useTripForm(trip: Trip | null) {
   const dispatch = useAppDispatch();
   const { pickCoverImage, tripCoverStore } = useDependencies();
   const saving = useAppSelector(selectTripsSaving);
+  const currencyPreference = useAppSelector(selectCurrencyPreference);
 
-  const [initial] = useState(() => initialInput(trip));
+  const [initial] = useState(() => initialInput(trip, currencyPreference));
   const [input, setInput] = useState<TripInput>(initial);
   const [errors, setErrors] = useState<TripValidationErrors | null>(null);
   const [failure, setFailure] = useState<AppErrorKind | null>(null);

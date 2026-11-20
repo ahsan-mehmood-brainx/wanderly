@@ -1,133 +1,191 @@
 ---
-diff_hash: f5d6226f4bc65ee7783b49c2c5072737b8b479e31399da9fcbfcb09af1a13513
-reviewed_at: 2026-11-20T12:41:47Z
+diff_hash: c8d97e5c1a3112776ee8daa8a22a491d79559ddf6936651e68712c1ecda664ed
+reviewed_at: 2026-11-20T19:30:13Z
 ---
 
 ## Summary
 
-Adds budget and expense tracking (feature 09). It includes SQLite `expenses` and `exchange_rates` tables (migration 4), an owner-scoped `LocalExpenseRepository` with zod-validated rows, and Frankfurter exchange rates behind a SQLite cache with a TTL for `latest` and a nearest-earlier fallback. Conversion uses exact BigInt minor-unit math, and manual rates cover currencies the API doesn't publish. There are create, update, delete and conversion-refresh use cases, an RTK slice with a single-writer lock and request-id staleness guards, and screens for the overview, history, details, the add/edit form and the breakdown. The diff also adds deep links for `/budget/:tripId/...`, a Budget entry card on the trip screen, and en/es strings.
+This diff covers a profile and settings overhaul plus Urdu/RTL support:
 
-Stack: React (Expo SDK 58 / React Native), reviewed with the React criteria adapted to RN. `tsc --noEmit` and `expo lint` ran clean, and the budget and navigation Jest suites pass (20 suites, 361 tests).
+- **Profile feature (`src/features/profile`).** It has an owner-scoped local profile (display name, home base, bio, photo) stored as zod-validated JSON, and a FileSystem photo store gated by a reference regex. There are save/pick use cases, a slice with request-id staleness guards, travel stats, and new Profile and Edit Profile screens. The old `auth` ProfileScreen is removed, and nothing imports it any more.
+- **Preferences.** A default-currency preference is added, which preselects the currency on New Trip only. Notification switches are merged one at a time. Settings gains a location-permission row (with AppState refresh and race guard) and new About and Privacy screens.
+- **i18n.** Urdu is added with RTL: `LayoutDirectionProvider`, `applyNativeLayoutDirection` (allowRTL/forceRTL plus a restart notice), RTL-aware `AppText`/`AppInput`/`AppIcon`/`Screen`/`AppBottomSheet`, a new `ListGroup`, and Urdu typography scaling. A test enforces matching keys and placeholders across en/es/ur.
+- **Docs.** README and ARCHITECTURE are updated.
 
-Security looks sound. Every SQL statement is parameterized and filtered by `owner_id`. Creating an expense checks that the trip belongs to the owner, and updates re-read the expense under the owner. Route and deep-link ids go through `parseRouteId`. The rate API is HTTPS, needs no key, and its responses are validated with zod.
+Stack: React (Expo SDK 58 / React Native 0.88). I reviewed it with the React criteria adapted to RN. `tsc --noEmit` exits 0, `expo lint` exits 0, and the full Jest run passes (198 suites, 2435 tests).
 
-The previous `.code-reviews/brainx-review.md` was the finalized review of the already committed favorites change (8ce18cf), and none of its findings touch this diff, so this run is a fresh review of the budget diff.
+Security looks sound:
+
+- Photo paths are gated by `^profile-photos\/[A-Za-z0-9_-]+\.[a-z0-9]+$` before every remove/displayUri, with allow-listed extensions.
+- Profile storage is keyed per owner (`profile.local.v1.<ownerId>`) and the slice is reset on sign-in/sign-out/session expiry.
+- Stored preferences and profile JSON are validated field by field with safe fallbacks.
+- Photo replacement order is safe: the new photo is imported, then the profile is saved, and only then is the old photo deleted. If the save fails, the imported copy is cleaned up.
+
+The previous `.code-reviews/brainx-review.md` was the finalized review of the already committed budget change (d7c27d7). This diff deletes it and none of its findings touch these files, so this is a fresh review.
+
+The main issue is user-facing privacy copy that misdescribes which services receive location data. `src/core/i18n/locales/ur.ts` notes that the Urdu strings are machine-written and need native-speaker review (privacy copy included) before Urdu ships. That is a release step, not a code finding.
 
 ## Findings
 
 ### Critical (0)
 
-### High (0)
+### High (1)
+- **src/core/i18n/locales/en.ts:1071**: The Privacy screen says the map tiles come from OpenStreetMap and that location is rounded before it goes to the map services. In fact the base map is Apple Maps / Google Maps, which the services list doesn't mention. *(correctness / privacy disclosure)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: `PrivacyScreen.tsx:8` lists `dummyJson, restCountries, wikipedia, openMeteo, openStreetMap, frankfurter`, and `privacy.services.openStreetMap` reads "OpenStreetMap: map tiles and nearby places." But `MapCanvas.tsx` renders `<MapView>` with no `provider` or `UrlTile` (its own doc comment says "the platform's own base map (Apple Maps / Google Maps)") and passes `showsUserLocation`. The platform map SDK therefore loads the tiles and reads the exact position for the user dot. `privacy.location.body` (en.ts:1063) adds "It is rounded before it is sent to the weather and map services", but rounding only happens on Wanderly's own requests (Overpass nearby search and the weather `COORDINATE_DECIMALS = 2`). Place search text also goes to Nominatim, and nearby places come from overpass-api.de; neither is named. A privacy disclosure that names the wrong processor and overstates protections is misleading to users and a store-review risk. The same text is in es.ts and ur.ts. Fix: list Apple Maps / Google Maps as the base-map provider, name Nominatim/Overpass accurately, and limit the rounding claim to the weather and nearby-places requests. Then have the copy reviewed before release.
 
-### Medium (1)
-- **src/features/budget/presentation/hooks/useTripBudget.ts:49**: The first background conversion is never re-run when a save or delete lands while it is in flight, so the overview keeps showing stale, unconverted totals. *(correctness)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: On a first visit, `loadTripExpenses` finishes with `converted: false`, and the effect then dispatches `retryConversions`, whose pending state keeps `status: 'ready', converted: false`. If an expense is created, updated or deleted before that retry finishes, `invalidateRunningLoad` (`budgetSlice.ts:148`) rejects the retry's result and writes `status: 'ready', converted: false` again. Those are the same values as before, so the effect's dependencies don't change and nothing dispatches a new conversion. SQLite holds the converted amounts, but the store keeps the old copy: totals leave those expenses out and the "not converted" banner stays up until the user taps Try again or the screen remounts. A slow network makes this easy to hit (open Budget, add a same-currency expense quickly). `budgetSlice.edge.test.ts:163` misses it because it starts from `loadTripBudget` (`converted: true`) and re-dispatches the retry by hand. Possible fix: have the effect also watch the load's `requestId` (or a "conversion pending" flag), so that a cleared request with `converted === false` triggers a new retry.
+### Medium (0)
 
-### Low (5)
-- **src/features/budget/presentation/state/budgetSlice.ts:107**: `retryConversions` doesn't de-duplicate a conversion that is already running, so several callers start parallel `GetTripBudget` runs. *(efficiency)*
+### Low (11)
+- **src/core/i18n/locales/en.ts:1063**: The location privacy copy says position "is never stored with your trips" but doesn't mention that a rounded position is kept with cached weather forecasts. *(correctness / privacy disclosure)*
   - status: open
   - dev_reasoning: N/A
-  - ai_reasoning: The condition only blocks while `status === 'loading'`, but a background retry keeps `status: 'ready'`. When `BudgetEntryCard` on the trip screen and the pushed `BudgetOverviewScreen` are both mounted, each effect dispatches its own retry, and pushing the overview while the card's retry runs starts another one. `UnconvertedBanner` has a `retrying` prop that no caller passes, so the Try again button gives no feedback and every tap starts another run. Results stay correct (only the newest `requestId` is accepted, and `basis` guards the writes), but each run repeats Frankfurter lookups and SQLite writes. The comment at `useTripBudget.ts:45` ("Only the first caller loads") is not true for retries. Possible fix: skip the retry when one is already in flight (`requestId !== null`), and pass `retrying` to the banner.
-- **src/features/budget/data/CachedExchangeRateRepository.ts:61**: A historical rate is cached permanently under the requested date even when the API answered with an earlier day because that date's ECB rate wasn't published yet. *(correctness)*
+  - ai_reasoning: `StorageWeatherCache.ts` saves forecasts keyed by `location` (the device position rounded to about 1 km) in plain device storage. The sentence is literally true but incomplete. Adding "a rounded position is kept with cached forecasts" would make it accurate. Can be fixed together with the High finding above.
+- **src/features/preferences/presentation/screens/SettingsScreen.tsx:192**: When location access is `granted`, the row shows no action, so users get no path to revoke access from the app. *(ux / consistency)*
   - status: open
   - dev_reasoning: N/A
-  - ai_reasoning: A date before the device's local today counts as historical and is never refetched. A traveller well east of CET (for example NZ just after midnight) asks for local "yesterday" before the ECB has published it, so Frankfurter returns the previous working day, and that answer is saved under the requested date for good. Later expenses on that date reuse it, and `needsBetterRate` won't replace it because `updatedAt` is already after the expense date. The rate is labelled with its real `rateDate`, so the effect is a rate one working day off, not a wrong label. Possible fix: cache permanently only when `rateDate === date` or the date is safely in the past (or a weekend); otherwise apply the `latest` TTL.
-- **src/features/budget/domain/usecases/expenseUseCases.ts:91**: `needsBetterRate` uses `updatedAt` as the time of conversion, but any edit changes `updatedAt`. *(correctness)*
+  - ai_reasoning: An action button only renders for `undetermined | denied` (Allow) and `blocked` (Open Settings). The status text is accurate, but a settings row for a permission normally offers a way to change it either way. Showing "Open Settings" for `granted` as well would cover that.
+- **src/bootstrap/PreferencesGate.tsx:68**: The "Restart Wanderly to finish switching the navigation layout" notice appears even when the user never switched language. *(correctness / copy)*
   - status: open
   - dev_reasoning: N/A
-  - ai_reasoning: Take a future-dated foreign expense converted at the `latest` rate. Once its date passes it should get that day's rate. If the user edits only its title, notes, category or payment method after the date, `UpdateExpense` keeps the old conversion but sets `updatedAt` to now. The condition `localDateAt(expense.updatedAt) < expense.date` then fails, so the approximate pre-date rate is kept permanently. Possible fix: base the check on when the rate was applied (for example, store the conversion time or compare against the rate's fetch time) rather than on `updatedAt`.
-- **src/features/budget/domain/budgetCalculations.ts:90**: `convertMinor` returns `Number(bigint)` without checking that the result is a safe integer, and a manual rate has no upper bound (`expenseValidation.ts:74`). *(validation)*
+  - ai_reasoning: `applyNativeLayoutDirection` returns `restartRequired: I18nManager.isRTL !== rtl`. On a fresh install on an RTL-locale device (e.g. Arabic) with the app language English, native `isRTL` is `true` at launch. The function therefore reports a restart, and Settings shows `settings.layoutRestart` (en.ts:1014) although nothing was switched. Behaviour is otherwise correct: content is LTR immediately and native chrome is fixed after a restart. Consider wording that doesn't imply a user action, or only showing it after a change made in Settings.
+- **src/features/profile/domain/usecases/profileUseCases.ts:65**: An unchanged photo is kept only if it matches `isStoredReference`. Unlike trips (`requested === previous || isStoredReference`), a stored non-reference value is re-imported on every save. *(correctness / consistency)*
   - status: open
   - dev_reasoning: N/A
-  - ai_reasoning: A mistyped manual rate (for example, extra zeros) gives a base amount above `Number.MAX_SAFE_INTEGER`. It is stored imprecisely, possibly as a REAL, and still passes the row schema (`Number.isInteger(1e26)` is true), so the trip's totals are inflated until the expense is edited. It only happens through user error, but a sanity bound is cheap. Possible fix: cap the manual rate (digits or magnitude) and reject a non-safe result in `convertMinor`, which `applyRate` already treats as "can't convert".
-- **src/features/budget/presentation/state/budgetSlice.ts:69**: `loadTripBudget` is only used by tests. Production code loads with `loadTripExpenses` and then `retryConversions`. *(maintainability)*
+  - ai_reasoning: `StorageLocalProfileRepository` accepts any non-empty string for `photo`. If stored data holds a raw path (corrupt or older data), `useProfileForm` copies it into the form and each save calls `importImage` on it. If that file is gone, every save fails with a storage error until the user removes the photo. Needs corrupt or tampered storage, hence Low. Fix: also keep `photo === previousPhoto`, or reject non-reference photo values when loading.
+- **src/features/profile/presentation/hooks/useProfileForm.ts:18**: The form starts with `displayName: profile.displayName ?? accountName`, so any save (even a bio-only edit) saves the current account name as the local display name for good. *(correctness / design)*
   - status: open
   - dev_reasoning: N/A
-  - ai_reasoning: The thunk and its reducer branches (`pending`, and the shared fulfilled/rejected matchers) are dead in the app. Many slice tests drive this path instead of the one `useTripBudget` actually uses, which is part of why the Medium finding above isn't caught. Possible fix: remove it and move the tests to the `loadTripExpenses` + `retryConversions` path, or document why it is kept.
+  - ai_reasoning: After the first save, a later account-name change from the server (`refreshProfile`) never shows on Profile or in the drawer, because `useProfileIdentity` prefers `profile.displayName`. The field is required (`profileValidation.ts`), so the user can't go back to "use my account name". Confirm this is intended. If not, keep `displayName` null unless the user edited it.
+- **src/features/profile/presentation/screens/EditProfileScreen.tsx:31**: `accountName={identity.name}` passes the local display name when one is saved, not the account name the prop is named after. *(naming / correctness)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: `useProfileIdentity` sets `name: profile.displayName ?? displayName(user)`. The saved form result is unaffected, but when the name field is cleared the avatar fallback (`input.displayName || accountName`) shows the saved local name's initials, not the account name. Pass `displayName(identity.user)` instead.
+- **src/features/profile/presentation/hooks/useLocalProfile.ts:17**: When the local profile load fails, Profile and the drawer silently fall back to the account name and photo, and the load isn't retried until the user opens Edit and taps Retry. *(error handling)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: The effect only dispatches while `status === 'idle'`, so a `failed` status stays until an explicit retry. ProfileScreen shows no message for this, while travel stats in the same screen do show an "unavailable" state. Low impact because the fallback data is reasonable, but the failure is invisible.
+- **src/features/profile/presentation/screens/ProfileScreen.tsx:157**: The loading accessibility label is built by string concatenation (`` `${label}: ${t('common.loading')}` ``), unlike the other two states, which use translation templates. *(i18n)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: `valueLabel` and `unavailableLabel` go through `t(..., { stat })`, which allows per-locale word order and punctuation (relevant now that Urdu is supported). Add a `profile.stats.loadingLabel` key for consistency.
+- **src/features/profile/data/FileSystemProfilePhotoStore.ts:1**: Near line-for-line duplicate of `FileSystemTripCoverStore.ts` (reference regex, `extensionOf`, import/remove/displayUri). *(maintainability)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: Two copies of the path-validation and file-copy logic can drift apart, for example if one gets a security fix to the reference check and the other doesn't. A shared store parameterized by directory name would remove the duplication.
+- **src/shared/ui/AppIcon.tsx:36**: iOS self-mirroring is assumed to follow `I18nManager.isRTL`. On Fabric, `semanticContentAttribute` follows the Yoga (JS `direction`) layout direction, so `restore` may be double-flipped or left unflipped before the restart. *(rtl)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: `nativeMirrored = Platform.OS === 'ios' && I18nManager.isRTL && IOS_SELF_MIRRORING_ICONS.has(name)`. However, `UIView+ComponentViewProtocol.mm` sets each view's `semanticContentAttribute` from `layoutMetrics.layoutDirection`, which comes from the JS `direction` set at the root, not from the native `I18nManager` flag. If the `SymbolView` image follows that, then in the window between switching language and restarting the `restore` arrow points the wrong way. Steady state after a restart is correct either way. `rtlNativeAlignment.test.tsx` only checks the JS transform, so it encodes the assumption. Verify on an iOS device (switch to Urdu without restarting and look at the restore icon on TripScreen). If it is wrong, don't JS-mirror `IOS_SELF_MIRRORING_ICONS` on iOS. Cosmetic and temporary, hence Low.
+- **src/features/weather/presentation/components/DailyForecastList.tsx:95**: The forecast range bar still positions its fill with physical `left`, so in Urdu the fill doesn't line up with the flipped min/max labels. *(rtl)*
+  - status: open
+  - dev_reasoning: N/A
+  - ai_reasoning: This file is not in the diff, but the diff adds RTL and ARCHITECTURE section 18 says content flips immediately. In RTL the row's min and max labels swap sides, while `left: \`${position.start * 100}%\`` keeps the fill measured from the physical left, so the low end of the bar sits next to the max label. Use `start` instead of `left`.
 
 ## Reviewed files
-- README.md (skimmed)
-- docs/ARCHITECTURE.md (skimmed)
-- src/app/(app)/(tabs)/budget/[tripId]/breakdown.tsx
-- src/app/(app)/(tabs)/budget/[tripId]/expenses/[expenseId]/edit.tsx
-- src/app/(app)/(tabs)/budget/[tripId]/expenses/[expenseId]/index.tsx
-- src/app/(app)/(tabs)/budget/[tripId]/expenses/index.tsx
-- src/app/(app)/(tabs)/budget/[tripId]/expenses/new.tsx
-- src/app/(app)/(tabs)/budget/[tripId]/index.tsx
-- src/app/(app)/(tabs)/budget/_layout.tsx
+- .code-reviews/brainx-review.md (deleted; previous finalized review)
+- README.md
+- app.json
+- docs/ARCHITECTURE.md
+- src/app/(app)/(tabs)/profile/_layout.tsx
+- src/app/(app)/(tabs)/profile/about.tsx
+- src/app/(app)/(tabs)/profile/edit.tsx
+- src/app/(app)/(tabs)/profile/index.tsx
+- src/app/(app)/(tabs)/profile/privacy.tsx
+- src/app/(app)/_layout.tsx
+- src/bootstrap/PreferencesGate.test.tsx
+- src/bootstrap/PreferencesGate.tsx
 - src/bootstrap/createAppContainer.ts
-- src/bootstrap/databaseMigrations.ts
 - src/core/di/AppDependencies.ts
-- src/core/i18n/locales/en.ts (skimmed)
-- src/core/i18n/locales/es.ts (skimmed)
+- src/core/i18n/LayoutDirectionProvider.test.tsx
+- src/core/i18n/LayoutDirectionProvider.tsx
+- src/core/i18n/createI18n.ts
+- src/core/i18n/languages.test.ts
+- src/core/i18n/languages.ts
+- src/core/i18n/locales/en.ts
+- src/core/i18n/locales/es.ts
+- src/core/i18n/locales/locales.test.ts
+- src/core/i18n/locales/ur.ts (key/placeholder parity enforced by locales.test.ts; Urdu wording not reviewed, needs native-speaker review per file header)
+- src/core/money/currencies.ts
 - src/core/store/store.ts
-- src/features/budget/data/CachedExchangeRateRepository.edge.test.ts (skimmed)
-- src/features/budget/data/CachedExchangeRateRepository.test.ts (skimmed)
-- src/features/budget/data/CachedExchangeRateRepository.ts
-- src/features/budget/data/FrankfurterExchangeRateRepository.test.ts (skimmed)
-- src/features/budget/data/FrankfurterExchangeRateRepository.ts
-- src/features/budget/data/LocalExchangeRateCache.test.ts (skimmed)
-- src/features/budget/data/LocalExchangeRateCache.ts
-- src/features/budget/data/LocalExpenseRepository.edge.test.ts (skimmed)
-- src/features/budget/data/LocalExpenseRepository.test.ts (skimmed)
-- src/features/budget/data/LocalExpenseRepository.ts
-- src/features/budget/data/budgetMigrations.ts
-- src/features/budget/data/dto/frankfurterDtos.ts
-- src/features/budget/data/frankfurterApi.ts
-- src/features/budget/di.ts
-- src/features/budget/domain/ExchangeRate.ts
-- src/features/budget/domain/Expense.ts
-- src/features/budget/domain/budgetCalculations.edge.test.ts (skimmed)
-- src/features/budget/domain/budgetCalculations.test.ts (skimmed)
-- src/features/budget/domain/budgetCalculations.ts
-- src/features/budget/domain/expenseValidation.test.ts (skimmed)
-- src/features/budget/domain/expenseValidation.ts
-- src/features/budget/domain/repositories.ts
-- src/features/budget/domain/usecases/ExpenseConverter.ts
-- src/features/budget/domain/usecases/expenseConversionRefresh.test.ts (skimmed)
-- src/features/budget/domain/usecases/expenseUseCases.edge.test.ts (skimmed)
-- src/features/budget/domain/usecases/expenseUseCases.test.ts (skimmed)
-- src/features/budget/domain/usecases/expenseUseCases.ts
-- src/features/budget/presentation/components/BudgetEntryCard.tsx
-- src/features/budget/presentation/components/BudgetSheet.tsx
-- src/features/budget/presentation/components/BudgetStateView.tsx (skimmed)
-- src/features/budget/presentation/components/BudgetSummaryCard.tsx (skimmed)
-- src/features/budget/presentation/components/CategoryBreakdownChart.tsx (skimmed)
-- src/features/budget/presentation/components/DailySpendingChart.tsx
-- src/features/budget/presentation/components/ExchangeRateNote.tsx (skimmed)
-- src/features/budget/presentation/components/ExpenseCategoryPicker.tsx (skimmed)
-- src/features/budget/presentation/components/ExpenseDateSheet.tsx
-- src/features/budget/presentation/components/ExpenseRow.tsx
-- src/features/budget/presentation/components/PaymentMethodPicker.tsx (skimmed)
-- src/features/budget/presentation/components/SpendingProgressBar.tsx
-- src/features/budget/presentation/components/TripSwitcherSheet.tsx (skimmed)
-- src/features/budget/presentation/components/UnconvertedBanner.tsx
-- src/features/budget/presentation/format.ts
-- src/features/budget/presentation/hooks/useBudgetTrip.ts
-- src/features/budget/presentation/hooks/useExpense.ts
-- src/features/budget/presentation/hooks/useExpenseForm.edge.test.tsx (skimmed)
-- src/features/budget/presentation/hooks/useExpenseForm.manualRate.test.tsx (skimmed)
-- src/features/budget/presentation/hooks/useExpenseForm.ts
-- src/features/budget/presentation/hooks/useTripBudget.ts
-- src/features/budget/presentation/screens/BudgetOverviewScreen.tsx
-- src/features/budget/presentation/screens/BudgetScreen.tsx
-- src/features/budget/presentation/screens/ExpenseDetailsScreen.tsx
-- src/features/budget/presentation/screens/ExpenseFormScreen.tsx
-- src/features/budget/presentation/screens/ExpenseHistoryScreen.tsx
-- src/features/budget/presentation/screens/SpendingBreakdownScreen.tsx
-- src/features/budget/presentation/screens/budgetFlows.test.tsx (skimmed)
-- src/features/budget/presentation/state/budgetSlice.edge.test.ts (skimmed)
-- src/features/budget/presentation/state/budgetSlice.test.ts (skimmed)
-- src/features/budget/presentation/state/budgetSlice.ts
-- src/features/budget/presentation/state/selectors.ts
-- src/features/favorites/data/LocalFavoritesRepository.test.ts (skimmed)
-- src/features/trips/presentation/components/CurrencySheet.tsx
-- src/features/trips/presentation/screens/TripScreen.tsx
-- src/shared/navigation/deepLinks.test.ts (skimmed)
-- src/shared/navigation/deepLinks.ts
+- src/core/theme/ThemeProvider.tsx
+- src/core/theme/themes.ts
+- src/core/theme/tokens.test.ts
+- src/core/theme/tokens.ts
+- src/features/auth/presentation/screens/ProfileScreen.tsx (deleted)
+- src/features/budget/presentation/components/CategoryBreakdownChart.tsx
+- src/features/preferences/data/StoragePreferencesRepository.test.ts
+- src/features/preferences/data/StoragePreferencesRepository.ts
+- src/features/preferences/di.ts
+- src/features/preferences/domain/Preferences.ts
+- src/features/preferences/domain/resolvePreferences.test.ts
+- src/features/preferences/domain/resolvePreferences.ts
+- src/features/preferences/domain/usecases/LoadPreferences.test.ts
+- src/features/preferences/domain/usecases/SavePreferences.edge.test.ts
+- src/features/preferences/domain/usecases/SavePreferences.test.ts
+- src/features/preferences/domain/usecases/SavePreferences.ts
+- src/features/preferences/presentation/applyNativeLayoutDirection.test.ts
+- src/features/preferences/presentation/applyNativeLayoutDirection.ts
+- src/features/preferences/presentation/components/CurrencyPreferenceSheet.tsx
+- src/features/preferences/presentation/components/SettingSwitchRow.test.tsx
+- src/features/preferences/presentation/components/SettingSwitchRow.tsx
+- src/features/preferences/presentation/hooks/useLocationPermissionSetting.edge.test.tsx
+- src/features/preferences/presentation/hooks/useLocationPermissionSetting.ts
+- src/features/preferences/presentation/hooks/usePreferenceSettings.ts
+- src/features/preferences/presentation/screens/AboutScreen.tsx
+- src/features/preferences/presentation/screens/PrivacyScreen.tsx
+- src/features/preferences/presentation/screens/SettingsScreen.edge.test.tsx
+- src/features/preferences/presentation/screens/SettingsScreen.test.tsx
+- src/features/preferences/presentation/screens/SettingsScreen.tsx
+- src/features/preferences/presentation/state/preferencesSlice.test.ts
+- src/features/preferences/presentation/state/preferencesSlice.ts
+- src/features/preferences/presentation/state/selectors.ts
+- src/features/profile/data/FileSystemProfilePhotoStore.edge.test.ts
+- src/features/profile/data/FileSystemProfilePhotoStore.ts
+- src/features/profile/data/StorageLocalProfileRepository.edge.test.ts
+- src/features/profile/data/StorageLocalProfileRepository.test.ts
+- src/features/profile/data/StorageLocalProfileRepository.ts
+- src/features/profile/di.ts
+- src/features/profile/domain/LocalProfile.ts
+- src/features/profile/domain/profileValidation.test.ts
+- src/features/profile/domain/profileValidation.ts
+- src/features/profile/domain/repositories.ts
+- src/features/profile/domain/travelStats.test.ts
+- src/features/profile/domain/travelStats.ts
+- src/features/profile/domain/usecases/profileUseCases.test.ts
+- src/features/profile/domain/usecases/profileUseCases.ts
+- src/features/profile/presentation/hooks/useLocalProfile.ts
+- src/features/profile/presentation/hooks/useProfileForm.ts
+- src/features/profile/presentation/hooks/useProfileIdentity.ts
+- src/features/profile/presentation/hooks/useTravelStats.ts
+- src/features/profile/presentation/screens/EditProfileScreen.edge.test.tsx
+- src/features/profile/presentation/screens/EditProfileScreen.tsx
+- src/features/profile/presentation/screens/ProfileScreen.tsx
+- src/features/profile/presentation/screens/profileFlows.test.tsx
+- src/features/profile/presentation/state/profileSlice.edge.test.ts
+- src/features/profile/presentation/state/profileSlice.ts
+- src/features/profile/presentation/state/selectors.ts
+- src/features/shell/presentation/components/AppDrawerContent.tsx
+- src/features/trips/data/ExpoImagePickerService.ts
+- src/features/trips/domain/money.ts
+- src/features/trips/domain/repositories.ts
+- src/features/trips/presentation/hooks/useTripForm.currency.test.tsx
+- src/features/trips/presentation/hooks/useTripForm.ts
 - src/shared/navigation/routes.ts
-- src/testing/budgetFixtures.ts (skimmed)
+- src/shared/ui/AppBottomSheet.tsx
+- src/shared/ui/AppIcon.tsx
+- src/shared/ui/AppInput.tsx
+- src/shared/ui/AppText.tsx
+- src/shared/ui/ListGroup.tsx
+- src/shared/ui/Screen.tsx
+- src/shared/ui/StateViews.test.tsx
+- src/shared/ui/icons.ts
+- src/shared/ui/index.ts
+- src/shared/ui/rtl.test.tsx
+- src/shared/ui/rtlNativeAlignment.test.tsx
+- src/testing/layoutDirection.ts
+- src/testing/profileFixtures.ts
+- src/testing/renderWithProviders.tsx
 - src/testing/testDependencies.ts
-- Test files, docs and locale files were skimmed, not reviewed line by line
+- src/testing/tripFixtures.ts

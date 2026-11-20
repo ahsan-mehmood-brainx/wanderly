@@ -51,7 +51,12 @@ export interface TripCoverStore {
   displayUri(reference: string): string | null;
 }
 
+export interface PickImageOptions {
+  /** Crop aspect ratio; trip covers use the default 16:9. */
+  readonly aspect?: readonly [number, number];
+}
+
 /** Lets the traveller pick a photo. `null` when they cancel. */
 export interface ImagePickerService {
-  pickImage(): Promise<Result<string | null, AppError>>;
+  pickImage(options?: PickImageOptions): Promise<Result<string | null, AppError>>;
 }

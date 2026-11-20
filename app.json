@@ -28,7 +28,8 @@
       [
         "expo-localization",
         {
-          "supportedLocales": ["en", "es"]
+          "supportedLocales": ["en", "es", "ur"],
+          "supportsRTL": true
         }
       ],
       [
@@ -55,7 +56,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Wanderly lets you choose a photo from your library as a trip's cover image. The photo stays on this device.",
+          "photosPermission": "Wanderly lets you choose a photo from your library as a trip's cover image or your profile photo. The photo stays on this device.",
           "cameraPermission": false,
           "microphonePermission": false
         }

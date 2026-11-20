@@ -5,10 +5,19 @@ import { Appearance, Text } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { createI18n } from '@/core/i18n/createI18n';
+import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { ok } from '@/core/result';
+import { useAppTheme } from '@/core/theme/ThemeProvider';
+import {
+  DEFAULT_PREFERENCES,
+  type LanguagePreference,
+  type ThemePreference,
+} from '@/features/preferences/domain/Preferences';
 import { type PreferencesRepository } from '@/features/preferences/domain/PreferencesRepository';
 import { updatePreferences } from '@/features/preferences/presentation/state/preferencesSlice';
 import { createTestStore } from '@/testing/createTestStore';
+import { InMemoryKeyValueStore } from '@/testing/InMemoryKeyValueStore';
+import { layoutDirectionAt } from '@/testing/layoutDirection';
 import { renderWithProviders } from '@/testing/renderWithProviders';
 import { createTestDependencies } from '@/testing/testDependencies';
 
@@ -25,8 +34,24 @@ function TranslatedTitle() {
   return <Text>{t('settings.title')}</Text>;
 }
 
-function repositoryWith(theme: 'system' | 'light' | 'dark', language: 'system' | 'en' | 'es'): PreferencesRepository {
-  return { load: () => Promise.resolve(ok({ theme, language })), save: () => Promise.resolve(ok(undefined)) };
+function repositoryWith(theme: ThemePreference, language: LanguagePreference): PreferencesRepository {
+  return {
+    load: () => Promise.resolve(ok({ ...DEFAULT_PREFERENCES, theme, language })),
+    save: () => Promise.resolve(ok(undefined)),
+  };
+}
+
+function DirectionProbe() {
+  const { t } = useTranslation();
+  const { direction } = useLayoutDirection();
+  const { typography } = useAppTheme();
+  return (
+    <>
+      <Text>{t('settings.title')}</Text>
+      <Text testID="direction">{direction}</Text>
+      <Text testID="probe-body">{`spacing:${String(typography.sectionTitle.letterSpacing ?? 0)}`}</Text>
+    </>
+  );
 }
 
 describe('PreferencesGate', () => {
@@ -115,5 +140,67 @@ describe('PreferencesGate', () => {
     await screen.findByText('Settings');
     expect(setColorScheme).toHaveBeenLastCalledWith('dark');
     setColorScheme.mockRestore();
+  });
+
+  describe('in Urdu', () => {
+    const URDU_SCRIPT = /[؀-ۿ]/;
+
+    afterEach(() => {
+      jest.mocked(useLocales).mockReturnValue(englishDevice);
+    });
+
+    it('TC-01 starts in Urdu and right to left when the app is built again from the same storage', async () => {
+      const keyValueStore = new InMemoryKeyValueStore();
+      const first = await renderWithProviders(<DirectionProbe />, { dependencies: { keyValueStore } });
+      await screen.findByText('Settings');
+      await act(() => first.store.dispatch(updatePreferences({ language: 'ur' })));
+      await screen.unmount();
+
+      await renderWithProviders(<DirectionProbe />, { dependencies: { keyValueStore }, initialLanguage: 'en' });
+
+      expect(await screen.findByText(URDU_SCRIPT)).toBeOnTheScreen();
+      expect(screen.queryByText('Settings')).not.toBeOnTheScreen();
+      expect(screen.getByTestId('direction')).toHaveTextContent('rtl');
+      expect(layoutDirectionAt(screen.getByTestId('direction'))).toBe('rtl');
+    });
+
+    it('TC-01 resolves "system" to Urdu on an Urdu device', async () => {
+      jest
+        .mocked(useLocales)
+        .mockReturnValue([
+          { ...englishDevice[0], languageCode: 'ur', languageTag: 'ur-PK', regionCode: 'PK', textDirection: 'rtl' },
+        ] as DeviceLocales);
+
+      await renderWithProviders(<DirectionProbe />, {
+        dependencies: { preferencesRepository: repositoryWith('system', 'system') },
+      });
+
+      expect(await screen.findByText(URDU_SCRIPT)).toBeOnTheScreen();
+      expect(screen.getByTestId('direction')).toHaveTextContent('rtl');
+    });
+
+    it('TC-03 switches the root layout back to left to right when English is chosen', async () => {
+      const { store } = await renderWithProviders(<DirectionProbe />, {
+        dependencies: { preferencesRepository: repositoryWith('system', 'ur') },
+      });
+      await screen.findByText(URDU_SCRIPT);
+
+      await act(() => store.dispatch(updatePreferences({ language: 'en' })));
+
+      expect(await screen.findByText('Settings')).toBeOnTheScreen();
+      expect(screen.getByTestId('direction')).toHaveTextContent('ltr');
+      expect(layoutDirectionAt(screen.getByTestId('direction'))).not.toBe('rtl');
+    });
+
+    it('TC-05 uses Urdu typography without letter spacing, and the regular scale in English', async () => {
+      const { store } = await renderWithProviders(<DirectionProbe />, {
+        dependencies: { preferencesRepository: repositoryWith('system', 'ur') },
+      });
+      expect(await screen.findByTestId('probe-body')).toHaveTextContent('spacing:0');
+
+      await act(() => store.dispatch(updatePreferences({ language: 'en' })));
+
+      expect(await screen.findByText('spacing:0.6')).toBeOnTheScreen();
+    });
   });
 });

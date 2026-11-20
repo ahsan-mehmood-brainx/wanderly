@@ -726,3 +726,57 @@ A load also replaces approximate conversions: a `fallback` rate, or, once the ex
 ### Testing
 
 `testing/budgetFixtures.ts` has `expense`, `euroExpense`, `unconvertedExpense`, `expenseInput`, `BUDGET_TRIP`, `seededBudgetDatabase` (real in-memory SQLite) and `stubFrankfurter`. The calculations, validation, repositories, rate cache, Frankfurter client (fake and real HTTP client), use cases and slice have unit tests; `budgetFlows.test.tsx` covers the screens with `renderRouter`. The financial calculations need human review before production, as for any generated code.
+
+## 18. Profile, settings and localization
+
+`features/preferences/` owns what the traveller sets once for the whole app (theme, language, default currency, notification choices) and the Settings, Privacy and About screens. `features/profile/` owns the local profile (display name, photo, home base, bio) and the travel stats. Authentication stays in `features/auth/`. The account details (email, username, account photo) are read-only here, and Sign out reuses `useSignOut`.
+
+### Layers
+
+```
+presentation  SettingsScreen · PrivacyScreen · AboutScreen · CurrencyPreferenceSheet · SettingSwitchRow
+              usePreferenceSettings · useLocationPermissionSetting · applyNativeLayoutDirection
+              ProfileScreen · EditProfileScreen · useLocalProfile · useProfileIdentity · useTravelStats · useProfileForm
+              preferencesSlice (+ layoutRestartRequired) · profileSlice (one save at a time, reset on account change)
+domain        Preferences (theme, language, currency, notifications) · resolvePreferences (resolveCurrency)
+              LocalProfile · profileValidation · travelStats · LocalProfileRepository · ProfilePhotoStore
+              GetLocalProfile · SaveLocalProfile · PickProfilePhoto
+data          StoragePreferencesRepository (preferences.v1) · StorageLocalProfileRepository (profile.local.v1.<ownerId>)
+              FileSystemProfilePhotoStore (profile-photos/) · UnsupportedProfilePhotoStore (web)
+```
+
+### Preferences
+
+`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. Wanderly doesn't send notifications yet, so the switches only save a choice, and Settings says so.
+
+The Location section shows the OS permission (`checkMapLocationPermission`). It offers Allow while the permission can still be requested and Open Settings once it is granted (to revoke it) or blocked, and it checks the permission again whenever the app returns to the foreground.
+
+### Local profile
+
+Each account's profile is one JSON document in `KeyValueStore`, the same approach as preferences and custom markers, so no SQLite migration is needed. The owner comes from the trips `TripOwnerProvider`, and with nobody signed in the use cases return `unauthorized`. The display name is trimmed and must be 1–60 characters, or `null` to follow the account name. The form starts with the account name, and if no display name was saved and the name is left unchanged, it saves `null`, so a later change to the account name still shows. The home base can be at most 80 characters and the bio at most 160. Lengths count characters (code points), not bytes. A picked photo is a temporary file. It is copied to `documents/profile-photos/` only when the profile is saved, and the copy is deleted if the save fails. The replaced photo is deleted only after a successful save, and an unchanged photo is kept as stored. Both photo stores build on `core/storage/DocumentImageStore`. The picker asks for a square crop (`pickImage({ aspect: [1, 1] })`), while trip covers keep the 16:9 default. `useProfileIdentity` shows the local name and photo in place of the account's on Profile and in the drawer. If the local profile can't load, Profile falls back to the account name and photo, says so, and offers Try again.
+
+Stats: Total trips counts every trip except cancelled ones, Completed trips counts trips whose status is `completed` as of today, and Saved places counts every favorite. Each source loads independently. A stat shows a placeholder while its source loads and `—` if the load failed.
+
+### Right-to-left layout (Urdu)
+
+Direction is handled in two parts:
+
+1. **Content flips immediately.** `PreferencesGate` wraps the app in `LayoutDirectionProvider` and a root view with a Yoga `direction`. `Screen` and `AppBottomSheet` set `direction` again, because native screen containers and `Modal` don't reliably inherit it. `AppText` adds `writingDirection: 'rtl'` and maps logical `align="start"`/`"end"` to the physical side. `AppInput` aligns text to the right, and `AppIcon` mirrors the icons in `DIRECTIONAL_ICONS` (chevrons, back, sign-out, undo). On iOS the SF Symbols in `IOS_SELF_MIRRORING_ICONS` flip themselves: on Fabric a view's semantic direction follows its Yoga layout direction (the JS `direction`), so AppIcon never mirrors them there. This still needs a check on a device between switching language and restarting. The drawer opens from the right.
+2. **Native chrome changes after a restart.** `applyNativeLayoutDirection` calls `I18nManager.allowRTL`/`forceRTL`. React Native reads these flags at launch, and they control stack headers, tab order and the back gesture. The app has no `expo-updates`, so it can't reload itself. When `I18nManager.isRTL` doesn't match the language, Settings notes that headers, tabs and the back gesture will match the language the next time the app starts. The wording doesn't assume the traveller switched language, since an RTL device with English selected also starts mismatched. `allowRTL(false)` also keeps English and Spanish left to right on a device set to an RTL locale. `app.json` sets `supportsRTL` for expo-localization, which takes effect only in a new native build.
+
+Urdu typography comes from `createTypography({ rtlScript: true })`. It drops letter spacing (which breaks the joins between letters) and case transforms, and raises line heights by about 1.35×, rounded to the 4pt grid, so Nastaliq glyphs don't clip. Inter has no Arabic-script glyphs, so Urdu text falls back to the system font. Hermes may format numbers and dates for `ur` with Latin digits; that is acceptable.
+
+### Edge cases
+
+| Case                                      | Behaviour                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A preference can't be saved               | The change still applies for this session, and Settings shows the dismissible save error.        |
+| The profile can't be saved                | A storage error appears under the form, and the typed text stays.                                |
+| Leaving Edit profile with unsaved changes | A sheet asks whether to keep editing or discard.                                                 |
+| Another account on the same device        | It sees its own (empty) profile. `profileSlice` resets on sign-out, expiry and sign-in.          |
+| Web                                       | No photo picker (`UnsupportedProfilePhotoStore`), and `applyNativeLayoutDirection` does nothing. |
+| Switching to or from Urdu                 | Content flips at once. The restart notice shows until the native direction matches.              |
+
+### Testing
+
+`testing/profileFixtures.ts` provides `localProfile`, `localProfileInput` and `FakeProfilePhotoStore`. `testing/layoutDirection.ts` finds the `direction` that applies to an element. Unless `initialLanguage` is given, `renderWithProviders` starts i18n in the device language, as the app does. `locales.test.ts` checks that `es` and `ur` have every English key and placeholder. The Urdu translations are machine-written and need review by a native speaker before release.

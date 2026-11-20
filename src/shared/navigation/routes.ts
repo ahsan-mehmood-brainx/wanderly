@@ -65,7 +65,10 @@ export const routes = {
   completedTrips: '/trips/completed',
   budget: '/budget',
   profile: '/profile',
+  editProfile: '/profile/edit',
   settings: '/profile/settings',
+  privacy: '/profile/privacy',
+  about: '/profile/about',
   designSystem: '/profile/design-system',
   savedPlaces: '/saved',
   collection: (collectionId: string) =>

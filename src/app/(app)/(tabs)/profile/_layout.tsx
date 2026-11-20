@@ -8,7 +8,10 @@ export default function ProfileStackLayout() {
   return (
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Screen name="index" options={{ ...tabRootOptions, title: t('auth.profile.title') }} />
+      <Stack.Screen name="edit" options={{ title: t('profile.edit.title') }} />
       <Stack.Screen name="settings" options={{ headerLargeTitle: true, title: t('settings.title') }} />
+      <Stack.Screen name="privacy" options={{ title: t('privacy.title') }} />
+      <Stack.Screen name="about" options={{ title: t('about.title') }} />
       <Stack.Screen name="design-system" options={{ title: t('settings.developer.designSystem') }} />
     </Stack>
   );

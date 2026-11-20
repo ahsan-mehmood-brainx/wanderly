@@ -32,16 +32,20 @@ function setup(repository: PreferencesRepository = createFakeRepository()) {
 describe('preferences state', () => {
   describe('loadPreferences', () => {
     it('applies stored preferences and becomes ready', async () => {
-      const repository = createFakeRepository({
-        load: jest.fn().mockResolvedValue(ok({ theme: 'dark', language: 'es' })),
-      });
+      const stored: Preferences = {
+        theme: 'dark',
+        language: 'ur',
+        currency: 'EUR',
+        notifications: { tripReminders: true, budgetAlerts: false },
+      };
+      const repository = createFakeRepository({ load: jest.fn().mockResolvedValue(ok(stored)) });
       const { store } = setup(repository);
 
       expect(selectPreferencesReady(store.getState())).toBe(false);
       await store.dispatch(loadPreferences());
 
       expect(selectPreferencesReady(store.getState())).toBe(true);
-      expect(selectPreferences(store.getState())).toEqual({ theme: 'dark', language: 'es' });
+      expect(selectPreferences(store.getState())).toEqual(stored);
     });
 
     it('falls back to defaults and still becomes ready when storage fails', async () => {
@@ -105,7 +109,7 @@ describe('preferences state', () => {
       expect(selectPreferences(store.getState()).theme).toBe('dark');
       await pending;
 
-      expect(repository.save).toHaveBeenCalledWith({ theme: 'dark', language: 'system' });
+      expect(repository.save).toHaveBeenCalledWith({ ...DEFAULT_PREFERENCES, theme: 'dark' });
       expect(selectPreferencesSaveError(store.getState())).toBeNull();
     });
 
@@ -156,7 +160,8 @@ describe('preferences state', () => {
     });
 
     it('does not overwrite the untouched setting with defaults when the start-up load failed', async () => {
-      const repository = new MockPreferencesRepository({ theme: 'dark', language: 'es' });
+      const saved: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark', language: 'es' };
+      const repository = new MockPreferencesRepository(saved);
       repository.loadError = storageError;
       const { store } = setup(repository);
       await store.dispatch(loadPreferences());
@@ -166,12 +171,12 @@ describe('preferences state', () => {
       await store.dispatch(updatePreferences({ theme: 'light' }));
       expect(selectPreferences(store.getState()).theme).toBe('light');
       expect(selectPreferencesSaveError(store.getState())).toBe('storage');
-      expect(repository.stored).toEqual({ theme: 'dark', language: 'es' });
+      expect(repository.stored).toEqual(saved);
 
       // Storage recovers: the change is merged into what was stored.
       repository.loadError = null;
       await store.dispatch(updatePreferences({ theme: 'light' }));
-      expect(repository.stored).toEqual({ theme: 'light', language: 'es' });
+      expect(repository.stored).toEqual({ ...saved, theme: 'light' });
       expect(selectPreferencesSaveError(store.getState())).toBeNull();
     });
   });
