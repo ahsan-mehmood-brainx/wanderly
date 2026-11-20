@@ -105,6 +105,46 @@ describe('itinerary deep links', () => {
   });
 });
 
+describe('budget deep links', () => {
+  it.each([
+    ['wanderly://budget/t-42', { pathname: '/budget/[tripId]', params: { tripId: 't-42' } }],
+    ['wanderly://budget/t-42/expenses', { pathname: '/budget/[tripId]/expenses', params: { tripId: 't-42' } }],
+    ['wanderly://budget/t-42/expenses/new', { pathname: '/budget/[tripId]/expenses/new', params: { tripId: 't-42' } }],
+    [
+      'wanderly://budget/t-42/expenses/exp_7',
+      { pathname: '/budget/[tripId]/expenses/[expenseId]', params: { tripId: 't-42', expenseId: 'exp_7' } },
+    ],
+    [
+      'https://example.com/budget/t-42/expenses/exp_7/edit',
+      { pathname: '/budget/[tripId]/expenses/[expenseId]/edit', params: { tripId: 't-42', expenseId: 'exp_7' } },
+    ],
+    [
+      'exp://192.168.1.2:8081/--/budget/t-42/breakdown',
+      { pathname: '/budget/[tripId]/breakdown', params: { tripId: 't-42' } },
+    ],
+  ])('opens %s', (url, href) => {
+    expect(resolveDeepLink(url)).toEqual(href);
+  });
+
+  it('still opens the Budget tab itself', () => {
+    expect(resolveDeepLink('wanderly://budget')).toBe(routes.budget);
+  });
+
+  it.each([
+    '/budget/a%20b',
+    '/budget/a%20b/expenses',
+    '/budget/t-42/expenses/a%20b',
+    '/budget/t-42/expenses/a%20b/edit',
+    `/budget/${'x'.repeat(65)}/breakdown`,
+    '/budget/t-42/expenses/exp_7/delete',
+    '/budget/t-42/expenses/new/edit',
+    '/budget/t-42/history',
+    '/budget/t-42/breakdown/food',
+  ])('rejects %s', (url) => {
+    expect(resolveDeepLink(url)).toBeNull();
+  });
+});
+
 describe('destination deep links', () => {
   it('accepts every destination id form, including long encoded place ids', () => {
     expect(resolveDeepLink('wanderly://destinations/country-pt')).toEqual(routes.destination('country-pt'));

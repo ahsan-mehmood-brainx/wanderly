@@ -574,30 +574,30 @@ Positions are 0..n-1 per day. Insert, update (including a move to another day), 
 
 ### Rules
 
-| Topic          | Rule                                                                                                                                                                                          |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Times          | Optional `HH:mm` wall-clock times at the destination, with no time zone, so nothing moves when the device's zone changes. An end time needs a start time and must be later the same day.      |
-| Day            | Must be one of the trip's days. The form only offers trip days.                                                                                                                               |
-| Duration       | End minus start, only when both are set. Shown as `1 h 30 min`.                                                                                                                               |
-| Conflicts      | Two timed activities on the same day overlap when `a.start < b.end && b.start < a.end`; back-to-back ones don't. Overlaps are saved, but flagged on the timeline, overview, details and form. |
-| Duplicates     | Refused: same trip and day, same title (trimmed, any case) and same start time (two untimed ones count as the same). The error names the existing activity.                                  |
-| Order          | `sortOrder` is the display order. A new activity, or one whose day or start time changes, goes after the last one starting at or before it; untimed ones go last. Dragging sets any order.   |
-| Cost           | Optional, positive, at most 1,000,000 in major units and the currency's decimals; defaults to the trip's currency. Totals are per currency, never converted. A free activity leaves it empty. |
-| Location       | Free-text address (offline), current position (GPS works offline), or place search (online only). Coordinates go through `checkCoordinates`.                                                 |
-| Limits         | Title 80, description and notes 2000, address 200 characters; 50 activities per day, which keeps the fixed-height drag list practical.                                                       |
-| Unsaved form   | Leaving with changes asks first.                                                                                                                                                              |
+| Topic        | Rule                                                                                                                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Times        | Optional `HH:mm` wall-clock times at the destination, with no time zone, so nothing moves when the device's zone changes. An end time needs a start time and must be later the same day.      |
+| Day          | Must be one of the trip's days. The form only offers trip days.                                                                                                                               |
+| Duration     | End minus start, only when both are set. Shown as `1 h 30 min`.                                                                                                                               |
+| Conflicts    | Two timed activities on the same day overlap when `a.start < b.end && b.start < a.end`; back-to-back ones don't. Overlaps are saved, but flagged on the timeline, overview, details and form. |
+| Duplicates   | Refused: same trip and day, same title (trimmed, any case) and same start time (two untimed ones count as the same). The error names the existing activity.                                   |
+| Order        | `sortOrder` is the display order. A new activity, or one whose day or start time changes, goes after the last one starting at or before it; untimed ones go last. Dragging sets any order.    |
+| Cost         | Optional, positive, at most 1,000,000 in major units and the currency's decimals; defaults to the trip's currency. Totals are per currency, never converted. A free activity leaves it empty. |
+| Location     | Free-text address (offline), current position (GPS works offline), or place search (online only). Coordinates go through `checkCoordinates`.                                                  |
+| Limits       | Title 80, description and notes 2000, address 200 characters; 50 activities per day, which keeps the fixed-height drag list practical.                                                        |
+| Unsaved form | Leaving with changes asks first.                                                                                                                                                              |
 
 ### Edge cases
 
-| Case                          | Behaviour                                                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trip dates edited             | Activities now outside the trip are kept and listed under "Outside trip dates" on the overview. They can be opened, completed and deleted; saving an edit requires a trip day. |
+| Case                          | Behaviour                                                                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trip dates edited             | Activities now outside the trip are kept and listed under "Outside trip dates" on the overview. They can be opened, completed and deleted; saving an edit requires a trip day.   |
 | Trip deleted                  | SQLite cascades; `itinerarySlice` drops the trip's activities on `deleteTrip.fulfilled`. Itinerary screens show "Trip not found", and a create for a deleted trip is `notFound`. |
-| Activity deleted or not owned | Details and edit show "Activity not found" with a way back to the itinerary. Another account's activity behaves as missing.                                     |
-| Reorder save fails            | The day returns to the previous order and shows the storage error.                                                                                              |
-| Double tap on save            | The thunk `condition` allows one change at a time, so it saves once.                                                                                            |
-| Offline                       | Everything works; only "Search places" is disabled, with "Search needs a connection".                                                                           |
-| Sign-out, expiry, sign-in     | `itinerarySlice` resets and ignores results from requests started before.                                                                                       |
+| Activity deleted or not owned | Details and edit show "Activity not found" with a way back to the itinerary. Another account's activity behaves as missing.                                                      |
+| Reorder save fails            | The day returns to the previous order and shows the storage error.                                                                                                               |
+| Double tap on save            | The thunk `condition` allows one change at a time, so it saves once.                                                                                                             |
+| Offline                       | Everything works; only "Search places" is disabled, with "Search needs a connection".                                                                                            |
+| Sign-out, expiry, sign-in     | `itinerarySlice` resets and ignores results from requests started before.                                                                                                        |
 
 ### Drag and drop
 
@@ -639,27 +639,90 @@ Inserting a favorite uses `ON CONFLICT (owner_id, target_id) DO NOTHING` and the
 
 ### Rules
 
-| Topic               | Rule                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Identity            | A target is the destination route id (`country-pt`, a curated slug, `place-…`) or the map place id (`osm:node/…`). The same place reached by two ids counts twice. |
-| Categories          | Countries → `country`; cities and places → `destination`; attractions, museums and parks → `attraction`; restaurants → `restaurant`; landmarks → `landmark`. Hotels can't be saved. |
+| Topic               | Rule                                                                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Identity            | A target is the destination route id (`country-pt`, a curated slug, `place-…`) or the map place id (`osm:node/…`). The same place reached by two ids counts twice.                               |
+| Categories          | Countries → `country`; cities and places → `destination`; attractions, museums and parks → `attraction`; restaurants → `restaurant`; landmarks → `landmark`. Hotels can't be saved.              |
 | Default collections | Want to Visit, Must Visit, Favorite Restaurants and Favorite Attractions, created with `INSERT OR IGNORE` on the first load and named from i18n. They can't be renamed or deleted (`forbidden`). |
-| Custom collections  | Name trimmed, 1 to 40 characters, unique among the account's custom collections ignoring case. At most 50 per account.                                     |
-| Membership          | Many to many. Saving a place adds it to no collection; the picker sets exactly the ticked ones. Removing a place from a collection keeps it saved.         |
-| Search and filter   | Name, subtitle and address, ignoring case and accents, combined with a category chip. Newest first.                                                         |
-| Removing            | Unsaving from a detail screen is immediate. Removing from Saved Places, and deleting a collection, ask first through `ConfirmSheet`.                        |
+| Custom collections  | Name trimmed, 1 to 40 characters, unique among the account's custom collections ignoring case. At most 50 per account.                                                                           |
+| Membership          | Many to many. Saving a place adds it to no collection; the picker sets exactly the ticked ones. Removing a place from a collection keeps it saved.                                               |
+| Search and filter   | Name, subtitle and address, ignoring case and accents, combined with a category chip. Newest first.                                                                                              |
+| Removing            | Unsaving from a detail screen is immediate. Removing from Saved Places, and deleting a collection, ask first through `ConfirmSheet`.                                                             |
 
 ### Edge cases
 
-| Case                      | Behaviour                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Double tap on Save        | The thunk `condition` allows one change at a time, and the database keeps one row per target.                                   |
-| Collection deleted        | Its memberships go with it; its places stay saved. A link to it shows "Collection not found".                                   |
-| Storage failure on load   | `AppErrorView` with `errorKind: 'storage'` and Try again.                                                                       |
-| Corrupt row               | Skipped with a warning, together with memberships that point at it.                                                             |
-| Offline                   | Everything works. Opening a saved destination needs a connection, as the destination screen always has.                       |
+| Case                      | Behaviour                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Double tap on Save        | The thunk `condition` allows one change at a time, and the database keeps one row per target.                                     |
+| Collection deleted        | Its memberships go with it; its places stay saved. A link to it shows "Collection not found".                                     |
+| Storage failure on load   | `AppErrorView` with `errorKind: 'storage'` and Try again.                                                                         |
+| Corrupt row               | Skipped with a warning, together with memberships that point at it.                                                               |
+| Offline                   | Everything works. Opening a saved destination needs a connection, as the destination screen always has.                           |
 | Sign-out, expiry, sign-in | `favoritesSlice` resets and ignores results from requests started before. Rows stay in SQLite for when the account signs back in. |
 
 ### Testing
 
 `testing/favoritesFixtures.ts` has `favoriteTarget`, `favorite`, `restaurantFavorite`, `customCollection` and `seededFavoritesDatabase` (real in-memory SQLite). Domain functions, the repository (constraints, duplicates, cascades, owner separation, corrupt rows, upgrade from version 2, persistence across connections), use cases and the slice have unit tests. `favoritesFlows.test.tsx` covers the screens with `renderRouter`, and `saveFromDetails.test.tsx` covers Save on the destination screen and the map sheet.
+
+## 17. Budget and expenses
+
+`features/budget/` tracks a trip's spending against its budget. The trip's own `budget` and `currency` (integer minor units in `trips`) are the budget and the base currency, so there is no second budget table: the Budget sheet saves them through the trips `updateTrip` thunk. Expenses live in SQLite per account and every operation works offline. The Budget tab (`/budget`) shows the ongoing trip, then the next upcoming one, then the most recently ended one (cancelled trips last), with a switcher; `TripScreen` links to each trip's budget through `BudgetEntryCard`.
+
+### Layers
+
+```
+presentation  BudgetScreen (/budget) · BudgetOverviewScreen (/budget/[tripId]) · ExpenseHistoryScreen (…/expenses)
+              ExpenseFormScreen (…/expenses/new, …/[expenseId]/edit) · ExpenseDetailsScreen (…/[expenseId])
+              SpendingBreakdownScreen (…/breakdown) · BudgetSummaryCard · SpendingProgressBar
+              CategoryBreakdownChart · DailySpendingChart (plain Views, no chart library) · ExpenseRow
+              ExpenseCategoryPicker · PaymentMethodPicker · ExchangeRateNote · UnconvertedBanner
+              BudgetSheet · TripSwitcherSheet · ExpenseDateSheet · BudgetEntryCard · format
+              useTripBudget · useBudgetTrip · useExpense · useExpenseForm
+              budgetSlice (mirror of SQLite, one change at a time) · selectors (summary, default trip)
+domain        Expense · ExchangeRateInfo · expenseValidation · budgetCalculations (convertMinor, summarizeBudget)
+              ExpenseRepository · ExchangeRateRepository · ExpenseConverter
+              GetTripBudget · GetExpense · CreateExpense · UpdateExpense · DeleteExpense · PreviewExchangeRate
+data          LocalExpenseRepository · LocalExchangeRateCache (SqlDatabase) · budgetMigrations (version 4)
+              FrankfurterExchangeRateRepository (HttpClient) · CachedExchangeRateRepository (decorator)
+```
+
+### Money
+
+Every amount is an integer in its currency's minor units (`currencyFractionDigits`). Totals add integers only. Rates are decimal strings (`'1.0805'`) and `convertMinor` converts with BigInt, rounding half up, so no floating-point value ever reaches a total. `summarizeBudget` counts an expense only when it has a base amount in the trip's current currency; the rest are reported as `unconvertedCount` and never mixed into the totals. Percent spent is in basis points and `null` for a zero budget; category shares use the largest remainder so they add up to 100.
+
+### Database
+
+Migration 4 creates `expenses` (owner-scoped, cascading from `trips`, `CHECK`s for a positive amount, known category, payment method and rate source, and base amount, rate, rate date and rate source all set or all `NULL`) and `exchange_rates` (`PRIMARY KEY (base, quote, requested_date)`, shared by every account because rates are public data; `requested_date` is a date or `latest`). Conversion updates for many expenses run in one transaction.
+
+### Exchange rates
+
+Frankfurter (`https://api.frankfurter.dev/v1`, no key): `/{date}?base=FROM&symbols=TO` for past dates, `/latest` for today and later, `/currencies` for the supported list. The rate date stored and shown is the one the API returns (the previous working day on weekends and holidays).
+
+| Step          | Rule                                                                                                                                                                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Same currency | Rate `1`, source `identity`, no request.                                                                                                                                                                                                                       |
+| Cache         | A historical rate is kept for good once it is for the date itself or the date is 2+ days back (published in every timezone); otherwise it, like `latest`, is reused for 6 hours. The currency list is kept 7 days in `KeyValueStore` (`budget.currencies.v1`). |
+| API           | On a miss, the answer is saved with its date. Failures are never cached.                                                                                                                                                                                       |
+| Fallback      | If the API fails (offline, timeout, 5xx, 429, missing date), the nearest earlier cached rate for the pair is used, source `fallback`, shown as approximate with its own date.                                                                                  |
+| Manual        | With no rate at all, the form offers a rate field; a typed rate is used only then (source `manual`). It must be above 0 and at most 1,000,000, so a converted amount always stays exact.                                                                       |
+| Unconverted   | Otherwise the expense is saved with no base amount, shown as "Not converted yet" and left out of the totals. The next load of a screen with totals (or Try again on the banner) converts it.                                                                   |
+
+Every screen first reads what is stored through `loadTripExpenses` (`GetTripExpenses`), which never calls the API. Only screens that show totals (overview, breakdown, the trip's budget card) then convert in the background through `retryConversions` (`GetTripBudget`), while what was read stays on screen (`loadByTrip[tripId].converted`). One conversion runs per trip at a time: `retryConversions` is skipped while a load or conversion is in flight (`requestId`), so screens showing the same trip and repeated Try again taps share it. An expense saved or deleted during a conversion discards that result and clears `requestId`, and `useTripBudget` starts a new one.
+
+A load also replaces approximate conversions: a `fallback` rate, or, once the expense's date has passed, an API rate dated before it (the latest rate used ahead of the date). Only the stored rate decides this, never `updatedAt`, so editing a title doesn't freeze an approximate rate. A weekend expense is re-checked from the rate cache and nothing is written when the rate is the same.
+
+### Edge cases
+
+| Case                                                         | Behaviour                                                                                                                                    |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zero budget                                                  | Not allowed by the trip form (`budget_minor > 0`); the calculations still handle it (no percentage, remaining is minus the spending).        |
+| Negative or zero amount, too many decimals, unknown currency | Field errors from `validateExpenseInput`; nothing is saved. Currencies are the trip form's list plus KWD.                                    |
+| Exchange API unavailable or missing historical rate          | The expense still saves (fallback, manual or unconverted).                                                                                   |
+| Base currency changed                                        | The trip's budget reloads; every expense whose base currency differs is converted again and saved in one transaction, or marked unconverted. |
+| Double tap on Save                                           | The thunk `condition` allows one change at a time.                                                                                           |
+| Deleted trip or expense, another account's expense           | "Trip not found" or "Expense not found".                                                                                                     |
+| Sign-out, expiry, sign-in                                    | `budgetSlice` resets and ignores results from requests started before.                                                                       |
+
+### Testing
+
+`testing/budgetFixtures.ts` has `expense`, `euroExpense`, `unconvertedExpense`, `expenseInput`, `BUDGET_TRIP`, `seededBudgetDatabase` (real in-memory SQLite) and `stubFrankfurter`. The calculations, validation, repositories, rate cache, Frankfurter client (fake and real HTTP client), use cases and slice have unit tests; `budgetFlows.test.tsx` covers the screens with `renderRouter`. The financial calculations need human review before production, as for any generated code.

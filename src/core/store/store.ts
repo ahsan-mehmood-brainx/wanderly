@@ -2,6 +2,7 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit';
 
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { authReducer } from '@/features/auth/presentation/state/authSlice';
+import { budgetReducer } from '@/features/budget/presentation/state/budgetSlice';
 import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
 import { discoverReducer } from '@/features/discover/presentation/state/discoverSlice';
 import { favoritesReducer } from '@/features/favorites/presentation/state/favoritesSlice';
@@ -25,6 +26,7 @@ const rootReducer = combineReducers({
   trips: tripsReducer,
   itinerary: itineraryReducer,
   favorites: favoritesReducer,
+  budget: budgetReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;

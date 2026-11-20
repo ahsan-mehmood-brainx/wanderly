@@ -11,15 +11,15 @@ interface CurrencySheetProps {
   readonly value: string;
   readonly onSelect: (currency: string) => void;
   readonly onClose: () => void;
+  /** The codes offered; the trip currencies unless a form accepts more. */
+  readonly currencies?: readonly string[];
 }
 
-export function CurrencySheet({ visible, value, onSelect, onClose }: CurrencySheetProps) {
+export function CurrencySheet({ visible, value, onSelect, onClose, currencies = TRIP_CURRENCIES }: CurrencySheetProps) {
   const { t } = useTranslation();
   const { spacing } = useAppTheme();
   // A trip saved in a currency no longer offered keeps it as an option.
-  const options = (TRIP_CURRENCIES as readonly string[]).includes(value)
-    ? TRIP_CURRENCIES
-    : [value, ...TRIP_CURRENCIES];
+  const options = currencies.includes(value) ? currencies : [value, ...currencies];
 
   return (
     <AppBottomSheet visible={visible} onClose={onClose} title={t('trips.currencyPicker.title')}>

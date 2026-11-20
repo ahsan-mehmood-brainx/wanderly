@@ -8,6 +8,7 @@ import { type AppErrorKind } from '@/core/errors/AppError';
 import { getErrorMessageKey } from '@/core/errors/errorMessages';
 import { useAppDispatch } from '@/core/store/hooks';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { BudgetEntryCard } from '@/features/budget/presentation/components/BudgetEntryCard';
 import { DestinationImage } from '@/features/discover/presentation/components/DestinationImage';
 import { ItineraryEntryCard } from '@/features/itinerary/presentation/components/ItineraryEntryCard';
 import { DeviceWeatherCard } from '@/features/weather/presentation/components/DeviceWeather';
@@ -184,6 +185,7 @@ function TripDetails({ trip, today, onDeletingChange }: TripDetailsProps) {
       </AppCard>
 
       <ItineraryEntryCard tripId={trip.id} />
+      <BudgetEntryCard tripId={trip.id} />
 
       {isCustomDestination(trip.destinationId) ? null : (
         <AppButton
