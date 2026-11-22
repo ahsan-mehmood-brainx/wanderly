@@ -4,12 +4,6 @@ import { createContainer } from '@/core/di/createContainer';
 
 import { createCoreFactories } from './coreFactories';
 
-jest.mock('expo-network', () => ({
-  addNetworkStateListener: jest.fn(() => ({ remove: jest.fn() })),
-  getNetworkStateAsync: jest.fn(() => new Promise(() => undefined)),
-  NetworkStateType: {},
-}));
-
 const releaseLogger = () =>
   createContainer<CoreDependencies>(createCoreFactories({ config: createAppConfig(false), getLanguage: () => 'en' }))
     .logger;

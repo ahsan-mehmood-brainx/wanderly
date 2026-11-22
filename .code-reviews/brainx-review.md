@@ -1,11 +1,11 @@
 ---
-diff_hash: 3fb2d238cc50d025362d146336b48229db43666646e0c61fae4e6bd0d1b869e5
-reviewed_at: 2026-11-22T18:35:59Z
+diff_hash: 5c7f2654e6d50b5f650419362ea8b5ab1977dc71fead9db070dc39650b21c576
+reviewed_at: 2026-11-22T20:14:50Z
 ---
 
 ## Summary
 
-Adds the photos feature (feature 09/photos): camera capture and library picking, JPEG re-encoding to app storage, a `photos` SQLite table (migration 5, owner-scoped queries), gallery/viewer/preview screens, trip cover from a gallery photo (`SetTripCover`), orphan file pruning, and en/es/ur strings. Stack: React (Expo / React Native). Ownership checks, reference-pattern validation, cleanup on partial failure and permission handling look sound. Three minor findings.
+Feature 13, offline-first. Replaces expo-network with NetInfo behind `ConnectivityService`; adds a durable SQLite cache (`cache_entries`, migration 6) with saved-copy fallback for destination data, a transactional outbox (`sync_outbox`, migration 7) written by the trip, activity, expense and favorites repositories inside their own transactions, an outbox coalescer, an exponential sync retry policy, a `SyncGateway` port with a local-only implementation, and a single-flight `SyncEngine`. UI: connectivity pill on tab-root headers, Settings › Offline and data screen, saved-copy notice on destinations, RTK Query refetch on reconnect, expense conversion on reconnect. Docs (§ 20) and en/es/ur strings. Stack: React (Expo / React Native). Scope: all changes (staged and unstaged), as requested for the commit. SQL is fully parameterised, stored data is validated with zod, and no secrets or PII leave the device. Six findings, none critical.
 
 ## Findings
 
@@ -13,91 +13,117 @@ Adds the photos feature (feature 09/photos): camera capture and library picking,
 
 ### High (0)
 
-### Medium (1)
-- **src/features/photos/presentation/hooks/usePhotos.ts:91** — `items` calls `photoFileStore.exists()` (a synchronous file-system stat) for every photo inside a `useMemo` that recomputes whenever `activities`, `photos` or the store change. With up to 200 photos per trip this blocks the JS thread on each recompute. *(performance)*
+### Medium (3)
+- **src/features/trips/data/LocalTripRepository.ts:142** — Deleting a trip records only the trip's delete. Its activities and expenses are removed by SQLite's cascade without being recorded, so their pending upserts stay in `sync_outbox` for good. Offline and data then counts "changes saved only on this device" for entities that no longer exist, and the outbox grows with every created-then-deleted trip. *(correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: existence results are now cached per reference in a store-keyed map (usePhotos.ts:37-99), so each file is stat-ed once instead of on every recompute.
+  - ai_reasoning: Fixed: `LocalTripRepository.delete` (LocalTripRepository.ts:155-173) now checks the trip exists, records a delete for every activity and expense listed in `TRIP_CASCADES` while the rows still exist, records the trip's delete, then deletes, all in one transaction. Never-pushed children coalesce away; pushed ones get explicit deletes. Covered by outboxRecording.test.ts (cascade cleared, pushed children, missing trip records nothing, entity types match the child repositories).
+- **src/core/sync/SyncEngine.ts:165** — Interrupted operations are re-queued only on the first run of the session. If anything throws after `claim` (a sync source loader that rejects, or `acknowledge`/`reschedule` failing on a busy database), the operation stays `inFlight`: it is skipped by `listDue` and never pushed again until the app restarts. A rejecting loader is not caught in `pushOne` either. *(correctness)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: `run()` now calls `recoverInterrupted` at the start of every run (SyncEngine.ts:164-168), which is safe because runs are single-flight, and a rejecting sync source is converted to an AppError and goes through `handleFailure` (SyncEngine.ts:224-227). Tests cover a run that throws after `claim` (re-sent on the next run with the same key) and a throwing source (rescheduled, not stuck).
+- **src/features/sync/presentation/screens/OfflineDataScreen.tsx:149** — `Section` is a line-for-line copy of the private `Section` in `SettingsScreen.tsx:160`. *(maintainability)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: extracted to `shared/ui/SettingsSection.tsx` (exported from `@/shared/ui`); both SettingsScreen and OfflineDataScreen use it and their private copies are gone.
 
-### Low (2)
-- **src/features/photos/domain/usecases/photoUseCases.ts:158** — The per-trip photo cap is enforced by a read-then-insert (`countByTrip` then `insertMany`) with no atomic guard, so two overlapping attaches could exceed `MAX_PHOTOS_PER_TRIP`. *(correctness)*
-  - status: fixed
-  - dev_reasoning: The cap is already authoritative in LocalPhotoRepository.insertMany, whose INSERT only runs when `(SELECT COUNT(*) FROM photos WHERE owner_id = ? AND trip_id = ?) < MAX_PHOTOS_PER_TRIP`, inside a transaction. The countByTrip in AttachPhotos is only an early, friendly rejection. Added a repository test that proves a second attach is refused at the cap.
-  - ai_reasoning: Still present: countByTrip then insertMany is unchanged. The UI blocks concurrent changes via `changeRequestId`, so impact is minimal; a count condition in the INSERT would make the limit authoritative.
-- **src/features/photos/presentation/screens/PhotoPreviewScreen.tsx:121** — Preview items are keyed by `${index}-${image.uri}`; removing an item shifts indices and remounts every following row. *(maintainability)*
+### Low (3)
+- **src/features/sync/presentation/format.ts:23** — The connection type is interpolated raw ("Online (wifi)", "Online (cellular)"), so Spanish and Urdu users see untranslated English identifiers. *(i18n)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: rows are now keyed by `image.uri` (PhotoPreviewScreen.tsx:117), so removal no longer remounts siblings.
+  - ai_reasoning: Fixed: `describeConnection` maps wifi, cellular, ethernet, bluetooth, vpn and wimax to `offline.screen.connectionTypes.*` in en, es and ur, and shows plain "Online" otherwise (format.ts:17-29). A test checks the Spanish label "Conectado (datos móviles)".
+- **src/features/sync/presentation/components/ConnectivityIndicator.tsx:53** — The change to "Offline"/"Back online" is announced only through `accessibilityLiveRegion`, which is Android-only; VoiceOver users on iOS get no announcement. *(accessibility)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: connectivity changes are announced once with `AccessibilityInfo.announceForAccessibility` from `useOfflineLifecycle` (mounted once), instead of the Android-only live region on each of the six header pills, which is removed. useOfflineLifecycle.test.tsx checks one announcement per real change.
+- **src/features/sync/presentation/screens/OfflineDataScreen.tsx:197** — Hard-coded spacing (`gap: 12` here, `gap: 4` in `stackOptions.tsx:26`) instead of the theme's spacing tokens used everywhere else. *(consistency)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: OfflineDataScreen uses `spacing.md` and stackOptions uses `spacing.xs` from `useAppTheme()`; no hard-coded gaps remain.
 
 ## Reviewed files
-- app.json
+- README.md
 - docs/ARCHITECTURE.md
 - jest.setup.ts
-- package-lock.json
+- package-lock.json (skimmed: dependency change only, NetInfo added and expo-network removed)
 - package.json
-- src/app/(app)/(tabs)/trips/[tripId]/itinerary/[itemId]/photos.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/[photoId].tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/camera.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/index.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/preview.tsx
-- src/app/(app)/(tabs)/trips/_layout.tsx
+- src/app/(app)/(tabs)/profile/_layout.tsx
+- src/app/(app)/(tabs)/profile/offline.tsx
+- src/app/(app)/_layout.tsx
+- src/bootstrap/coreFactories.test.ts
+- src/bootstrap/coreFactories.ts
+- src/bootstrap/createAppContainer.test.ts
 - src/bootstrap/createAppContainer.ts
 - src/bootstrap/databaseMigrations.ts
+- src/core/cache/CacheStore.ts
+- src/core/cache/MemoryCache.ts
+- src/core/cache/PersistentCache.test.ts
+- src/core/cache/PersistentCache.ts
+- src/core/cache/SqliteCacheStore.ts
+- src/core/cache/cacheMigrations.ts
 - src/core/di/AppDependencies.ts
+- src/core/di/CoreDependencies.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
 - src/core/i18n/locales/ur.ts
-- src/core/storage/DocumentImageStore.ts
-- src/core/store/store.ts
-- src/features/budget/data/LocalExpenseRepository.test.ts
-- src/features/itinerary/presentation/screens/ActivityDetailsScreen.tsx
-- src/features/photos/data/ExpoImageProcessor.ts
-- src/features/photos/data/ExpoMediaPermissionService.test.ts
-- src/features/photos/data/ExpoMediaPermissionService.ts
-- src/features/photos/data/ExpoPhotoLibraryPicker.test.ts
-- src/features/photos/data/ExpoPhotoLibraryPicker.ts
-- src/features/photos/data/FileSystemPhotoStore.test.ts
-- src/features/photos/data/FileSystemPhotoStore.ts
+- src/core/network/NetInfoConnectivityService.test.ts
+- src/core/network/NetInfoConnectivityService.ts
+- src/core/sync/LocalChange.ts
+- src/core/sync/PendingOperation.ts
+- src/core/sync/SqliteSyncOutbox.test.ts
+- src/core/sync/SqliteSyncOutbox.ts
+- src/core/sync/SyncEngine.test.ts
+- src/core/sync/SyncEngine.ts
+- src/core/sync/SyncGateway.ts
+- src/core/sync/SyncOutbox.ts
+- src/core/sync/SyncRetryPolicy.test.ts
+- src/core/sync/SyncRetryPolicy.ts
+- src/core/sync/coalesce.test.ts
+- src/core/sync/coalesce.ts
+- src/core/sync/offlineMigrations.test.ts
+- src/core/sync/syncMigrations.ts
+- src/features/budget/data/LocalExpenseRepository.ts
+- src/features/budget/di.ts
+- src/features/budget/presentation/hooks/useTripBudget.test.tsx
+- src/features/budget/presentation/hooks/useTripBudget.ts
+- src/features/discover/data/caching.ts
+- src/features/discover/data/persistentCaching.test.ts
+- src/features/discover/data/persistentCaching.ts
+- src/features/discover/di.ts
+- src/features/discover/domain/Country.ts
+- src/features/discover/domain/Destination.ts
+- src/features/discover/domain/usecases/GetDestinationDetails.ts
+- src/features/discover/presentation/components/SavedCopyNotice.tsx
+- src/features/discover/presentation/screens/DestinationScreen.test.tsx
+- src/features/discover/presentation/screens/DestinationScreen.tsx
+- src/features/discover/presentation/state/discoverApi.ts
+- src/features/favorites/data/LocalFavoritesRepository.ts
+- src/features/favorites/di.ts
+- src/features/itinerary/data/LocalActivityRepository.ts
+- src/features/itinerary/di.ts
 - src/features/photos/data/LocalPhotoRepository.test.ts
-- src/features/photos/data/LocalPhotoRepository.ts
-- src/features/photos/data/photosMigrations.ts
-- src/features/photos/di.ts
-- src/features/photos/domain/Photo.ts
-- src/features/photos/domain/imageValidation.edge.test.ts
-- src/features/photos/domain/imageValidation.test.ts
-- src/features/photos/domain/imageValidation.ts
-- src/features/photos/domain/repositories.ts
-- src/features/photos/domain/usecases/photoUseCases.edge.test.ts
-- src/features/photos/domain/usecases/photoUseCases.test.ts
-- src/features/photos/domain/usecases/photoUseCases.ts
-- src/features/photos/presentation/components/ActivityPhotosSection.tsx
-- src/features/photos/presentation/components/AddPhotoMenu.tsx
-- src/features/photos/presentation/components/CameraCanvas.tsx
-- src/features/photos/presentation/components/MediaPermissionView.tsx
-- src/features/photos/presentation/components/PhotoGrid.tsx
-- src/features/photos/presentation/components/PhotoTile.tsx
-- src/features/photos/presentation/components/PhotosEntryCard.tsx
-- src/features/photos/presentation/components/PhotosStateView.tsx
-- src/features/photos/presentation/format.ts
-- src/features/photos/presentation/hooks/useAddPhotos.ts
-- src/features/photos/presentation/hooks/useMediaPermission.test.tsx
-- src/features/photos/presentation/hooks/useMediaPermission.ts
-- src/features/photos/presentation/hooks/usePhotos.ts
-- src/features/photos/presentation/screens/CameraScreen.tsx
-- src/features/photos/presentation/screens/PhotoGalleryScreen.tsx
-- src/features/photos/presentation/screens/PhotoPreviewScreen.tsx
-- src/features/photos/presentation/screens/PhotoViewerScreen.tsx
-- src/features/photos/presentation/screens/photoFlows.test.tsx
-- src/features/photos/presentation/state/photosSlice.test.ts
-- src/features/photos/presentation/state/photosSlice.ts
-- src/features/photos/presentation/state/selectors.ts
+- src/features/preferences/presentation/screens/SettingsScreen.tsx
+- src/features/shell/presentation/stackOptions.tsx
+- src/features/sync/data/outboxRecording.test.ts
+- src/features/sync/data/syncEntitySources.ts
+- src/features/sync/di.ts
+- src/features/sync/domain/savedData.ts
+- src/features/sync/presentation/components/ConnectivityIndicator.test.tsx
+- src/features/sync/presentation/components/ConnectivityIndicator.tsx
+- src/features/sync/presentation/format.ts
+- src/features/sync/presentation/hooks/useOfflineData.ts
+- src/features/sync/presentation/hooks/useOfflineLifecycle.test.tsx
+- src/features/sync/presentation/hooks/useOfflineLifecycle.ts
+- src/features/sync/presentation/hooks/useSyncStatus.ts
+- src/features/sync/presentation/rtkQueryConnectivity.test.ts
+- src/features/sync/presentation/rtkQueryConnectivity.ts
+- src/features/sync/presentation/screens/OfflineDataScreen.test.tsx
+- src/features/sync/presentation/screens/OfflineDataScreen.tsx
+- src/features/trips/data/LocalTripRepository.ts
 - src/features/trips/di.ts
-- src/features/trips/domain/usecases/SetTripCover.test.ts
-- src/features/trips/domain/usecases/tripUseCases.ts
-- src/features/trips/presentation/screens/TripScreen.tsx
-- src/features/trips/presentation/state/tripsSlice.ts
 - src/shared/navigation/routes.ts
+- src/shared/ui/SettingsSection.tsx
 - src/shared/ui/icons.ts
-- src/testing/photoFixtures.ts
+- src/shared/ui/index.ts
+- src/testing/offlineFixtures.ts
 - src/testing/testDependencies.ts
-- package-lock.json (dependency changes only)

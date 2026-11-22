@@ -6,6 +6,7 @@ import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { AppDrawerContent } from '@/features/shell/presentation/components/AppDrawerContent';
 import { isDrawerSwipeEnabled } from '@/features/shell/presentation/navigation';
+import { useOfflineLifecycle } from '@/features/sync/presentation/hooks/useOfflineLifecycle';
 
 /** Signed-in shell: a drawer around the bottom tabs, plus drawer-only destinations (Saved Places). */
 export default function MainDrawerLayout() {
@@ -13,6 +14,8 @@ export default function MainDrawerLayout() {
   const { colors } = useAppTheme();
   const { isRTL } = useLayoutDirection();
   const pathname = usePathname();
+  // Reconnect refetching and pending-change tracking run while someone is signed in.
+  useOfflineLifecycle();
 
   return (
     <Drawer

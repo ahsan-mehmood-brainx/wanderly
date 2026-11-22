@@ -43,13 +43,15 @@ src/
   core/                      Cross-cutting infrastructure; knows no feature (except the DI type aggregate)
     config/                    AppConfig (env-derived settings)
     database/                  SqlDatabase port, SqliteDatabase (queue, transactions), migrations, expo-sqlite driver
+    cache/                     MemoryCache, PersistentCache + CacheStore (SQLite `cache_entries`) for offline copies
+    sync/                      LocalChangeLog, outbox (SQLite `sync_outbox`), coalescing, retry policy, SyncGateway, SyncEngine
     di/                        createContainer, CoreDependencies, AppDependencies, DependenciesProvider
     errors/                    AppError taxonomy, error → i18n message mapping
     events/                    Subject / Observable (Observer pattern)
     http/                      HttpClient facade, axios adapter, interceptors, error normalisation,
                                auth & retry strategies, HttpClientFactory
     logging/                   Logger port, AppLogger, log transports
-    network/                   ConnectivityService port + expo-network adapter
+    network/                   ConnectivityService port + NetInfo adapter
     storage/                   KeyValueStore port + AsyncStorage adapter
     store/                     Redux store factory, typed hooks, createAppAsyncThunk
     usecase/                   UseCase<TInput, TOutput> interface
@@ -200,7 +202,7 @@ useEffect(() => {
 
 ### Offline
 
-`ConnectivityService` (backed by `expo-network`) is observable. Only `isConnected === false` counts as offline, because `isInternetReachable` gives false negatives on some networks. The HTTP client reads the snapshot to fail fast. UI uses `useConnectivity()`, which re-renders only on change.
+`ConnectivityService` (backed by `@react-native-community/netinfo`) is observable. Only `isConnected === false` counts as offline, because `isInternetReachable` gives false negatives on some networks. The HTTP client reads the snapshot to fail fast. UI uses `useConnectivity()`, which re-renders only on change.
 
 ### Security notes
 
@@ -218,16 +220,16 @@ useEffect(() => {
 
 ## 6. Design patterns: where and why
 
-| Pattern                          | Where                                                                                                                                                                | Why it's used here                                                                                                                                                                                                                                                               |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Repository**                   | `PreferencesRepository` → `StoragePreferencesRepository`; future `XRepository` → `HttpXRepository`                                                                   | Domain logic asks for data in domain terms and doesn't care whether it comes from AsyncStorage, an API, or a cache. Swapping the source (e.g. adding offline caching in feature 7) changes one class, and use cases are tested with in-memory repositories.                      |
-| **Dependency Injection**         | `createContainer`, feature `di.ts` modules, thunk `extra`, `useDependencies`                                                                                         | Classes receive collaborators instead of constructing them. This is what makes every layer testable without network or storage, and keeps concrete choices in one place (the composition root).                                                                                  |
-| **Factory**                      | `HttpClientFactory.create(apiDefinition)`; DI factories (`Factories<T>`); `createAppContainer`, `createAppStore`, `createI18n`                                       | Building an HTTP client is non-trivial (base URL, timeout, interceptors, auth, retry). A factory lets features describe _what_ they need while the factory owns _how_ it's assembled. The test factory returns fakes with no other change.                                       |
-| **Strategy**                     | `RetryStrategy` (`ExponentialBackoffRetry`, `noRetry`), `AuthStrategy` (`noAuth`, `ApiKeyAuth`, `BearerTokenAuth`), `LogTransport`                                   | Public travel APIs differ in how keys are sent and how retries should behave, and log destinations differ by environment. The algorithm (retry loop, interceptor pipeline, logger) stays fixed, and behaviour varies by plugging in a strategy, per API or per request.          |
-| **Adapter**                      | `AxiosHttpClient` (axios → `HttpClient`), `ExpoNetworkConnectivityService` (expo-network → `ConnectivityService`), `AsyncStorageKeyValueStore`, DTO → entity mappers | Third-party APIs are wrapped behind interfaces the app owns. axios or expo-network could be replaced without touching features, and API field names stay out of the domain.                                                                                                      |
-| **Facade**                       | `HttpClient` (`get/post/put/patch/delete` → `Result`)                                                                                                                | Repositories see five verbs and a Result. Interceptors, auth, retries, timeouts, cancellation, validation and error mapping are hidden behind it, so network code stays short and consistent.                                                                                    |
-| **Observer**                     | `Subject`/`Observable`; `ConnectivityService.subscribe`; `useConnectivity` (`useSyncExternalStore`); Redux store subscriptions                                       | Connectivity changes are pushed to interested parties (UI, HTTP guard) instead of being polled. Listeners are isolated, so one throwing listener can't break the others.                                                                                                         |
-| **Singleton** (container-scoped) | Every service in the app container; one container per app run                                                                                                        | Services such as the logger, HTTP clients and connectivity listener must exist once (shared state, one native listener). This is done by container lifetime rather than global `getInstance()`, because global singletons are hidden dependencies that leak state between tests. |
+| Pattern                          | Where                                                                                                                                                       | Why it's used here                                                                                                                                                                                                                                                               |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Repository**                   | `PreferencesRepository` → `StoragePreferencesRepository`; future `XRepository` → `HttpXRepository`                                                          | Domain logic asks for data in domain terms and doesn't care whether it comes from AsyncStorage, an API, or a cache. Swapping the source (e.g. the offline caching of § 20) changes one class, and use cases are tested with in-memory repositories.                              |
+| **Dependency Injection**         | `createContainer`, feature `di.ts` modules, thunk `extra`, `useDependencies`                                                                                | Classes receive collaborators instead of constructing them. This is what makes every layer testable without network or storage, and keeps concrete choices in one place (the composition root).                                                                                  |
+| **Factory**                      | `HttpClientFactory.create(apiDefinition)`; DI factories (`Factories<T>`); `createAppContainer`, `createAppStore`, `createI18n`                              | Building an HTTP client is non-trivial (base URL, timeout, interceptors, auth, retry). A factory lets features describe _what_ they need while the factory owns _how_ it's assembled. The test factory returns fakes with no other change.                                       |
+| **Strategy**                     | `RetryStrategy` (`ExponentialBackoffRetry`, `noRetry`), `AuthStrategy` (`noAuth`, `ApiKeyAuth`, `BearerTokenAuth`), `LogTransport`                          | Public travel APIs differ in how keys are sent and how retries should behave, and log destinations differ by environment. The algorithm (retry loop, interceptor pipeline, logger) stays fixed, and behaviour varies by plugging in a strategy, per API or per request.          |
+| **Adapter**                      | `AxiosHttpClient` (axios → `HttpClient`), `NetInfoConnectivityService` (NetInfo → `ConnectivityService`), `AsyncStorageKeyValueStore`, DTO → entity mappers | Third-party APIs are wrapped behind interfaces the app owns. axios or NetInfo could be replaced without touching features, and API field names stay out of the domain.                                                                                                           |
+| **Facade**                       | `HttpClient` (`get/post/put/patch/delete` → `Result`)                                                                                                       | Repositories see five verbs and a Result. Interceptors, auth, retries, timeouts, cancellation, validation and error mapping are hidden behind it, so network code stays short and consistent.                                                                                    |
+| **Observer**                     | `Subject`/`Observable`; `ConnectivityService.subscribe`; `useConnectivity` (`useSyncExternalStore`); Redux store subscriptions                              | Connectivity changes are pushed to interested parties (UI, HTTP guard) instead of being polled. Listeners are isolated, so one throwing listener can't break the others.                                                                                                         |
+| **Singleton** (container-scoped) | Every service in the app container; one container per app run                                                                                               | Services such as the logger, HTTP clients and connectivity listener must exist once (shared state, one native listener). This is done by container lifetime rather than global `getInstance()`, because global singletons are hidden dependencies that leak state between tests. |
 
 Also used: **Result type** (errors as values at layer boundaries), **Template Method** (`BaseHttpClient` implements the verbs once over `request`, for the real and fake clients), and **Chain of Responsibility** (the axios interceptor pipeline).
 
@@ -848,3 +850,115 @@ Migration 5 creates `photos`: owner-scoped, `trip_id` cascading from `trips`, `a
 ### Testing
 
 `testing/photoFixtures.ts` has `photo`, `pickedImage`, `PHOTOS_TRIP`, `PHOTO_ACTIVITY`, `seededPhotoDatabase` (real in-memory SQLite), `FakePhotoFileStore` (`missing`, `failImportAt`), `FakeImageProcessor`, `FakeMediaPermissionService` and `FakePhotoLibraryPicker`. `jest.setup.ts` replaces expo-camera's `CameraView` with a View whose ref exposes `mockCamera.takePictureAsync`. Validation, use cases, repository, file store, permission mapping, picker, slice and `useMediaPermission` have unit tests; `photoFlows.test.tsx` drives the routes with `renderRouter`. The native camera, picker and file handling need on-device testing before release.
+
+## 20. Offline-first
+
+Wanderly is local-first: the traveller's own data lives in SQLite on the device and never needs the network, and public data (destinations, countries, weather, rates) is fetched from public APIs, kept on the device, and refreshed when it is out of date and the device is online. **There is no backend, so nothing synchronises between devices.** The pending-change outbox and sync engine below are a tested abstraction ready for a future cloud backend; today they only track what has changed, and the app says so.
+
+### Four kinds of data
+
+| Kind                         | Where                                                                                                                                                        | Examples                                                     | Offline behaviour                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| **Remote API data**          | Remote repositories over `HttpClient` (`RestCountriesRepository`, `WikipediaPlaceContentRepository`, Open-Meteo, Frankfurter, OSM)                           | Country facts, descriptions, forecasts, rates, nearby places | Fails fast with `offline` (interceptor), never thrown                                  |
+| **Cached data**              | `core/cache`: `MemoryCache` (per session) and `PersistentCache` over `cache_entries` (SQLite), plus feature caches (`StorageWeatherCache`, `exchange_rates`) | Destinations viewed, the country catalogue, forecasts        | Shown as a saved copy, labelled with its age; prunable and clearable at any time       |
+| **Local persistent data**    | Feature tables in `wanderly.db` (trips, activities, expenses, favorites, collections, photos)                                                                | Everything the traveller creates                             | Every operation works offline; the source of truth                                     |
+| **Pending local operations** | `core/sync`: `sync_outbox` (SQLite), written by repositories in the same transaction                                                                         | "trip-1 changed", "expense-3 deleted"                        | Tracked; would be pushed by `SyncEngine` through a `SyncGateway` once a backend exists |
+
+Screens never see which source answered: they call use cases, use cases call repository interfaces, and the composition root decides what sits behind them (Repository + Decorator).
+
+### Connectivity
+
+`NetInfoConnectivityService` adapts `@react-native-community/netinfo` (bundled in Expo Go, no config plugin) to the `ConnectivityService` port. It only re-emits real changes and ignores an initial reading older than a live event. As before, only `isConnected === false` counts as offline (§ 4). NetInfo uses the platform's own reachability on iOS and Android; the app doesn't rely on `isInternetReachable`.
+
+| Consumer                                       | Reacts to                                                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| HTTP `offlineGuard`                            | Fails requests with `offline` before they leave                                                                 |
+| `ConnectivityIndicator`                        | Header pill on every tab root: "Offline", then "Back online" for 3 s; opens Offline and data                    |
+| `connectRtkQueryToConnectivity`                | Dispatches RTK Query's `onOnline`/`onOffline` (and `onFocus`/`onFocusLost` from `AppState`) on real transitions |
+| `PersistentCache`                              | Ends `Retry-After` waits when the device comes back online                                                      |
+| `SyncEngine`                                   | Syncs when the device comes back online                                                                         |
+| `useWeather`, `useExploreMap`, `useTripBudget` | Refetch the forecast, reload places, convert expenses saved offline                                             |
+
+`useOfflineLifecycle` (mounted by the signed-in layout) wires RTK Query and starts the sync engine; signing out unmounts it.
+
+### Destination information offline
+
+```
+Memory (MemoryCache: TTL, coalescing)  →  Persistent (PersistentCache over SQLite)  →  Remote (HTTP)
+CachedCountryRepository                   PersistentCountryRepository                  RestCountriesRepository
+CachedPlaceContentRepository              PersistentPlaceContentRepository             WikipediaPlaceContentRepository
+```
+
+`PersistentCache.get(key, load)`:
+
+1. A stored copy younger than `freshForMs` is returned without a request.
+2. Otherwise `load()` runs; a success is stored and returned.
+3. If it fails with `offline`, `network`, `timeout`, `rateLimited` or `server`, a stored copy younger than `maxStaleMs` is returned with `refreshError`, and the entity carries `savedAt`.
+4. `notFound` deletes the stored copy.
+
+| Data                                         | Fresh for    | Shown up to | Kept |
+| -------------------------------------------- | ------------ | ----------- | ---- |
+| Country catalogue and country details        | 1 day        | 30 days     | 300  |
+| Wikipedia summaries (including "no article") | 3 days       | 30 days     | 400  |
+| Title search                                 | never stored |             |      |
+
+A saved copy shown for a failed refresh is not kept by the memory cache (`shouldCache`), so the next attempt after reconnecting really refreshes. `GetDestinationDetails` sets `DestinationDetails.savedAt` to the oldest saved part, and `SavedCopyNotice` says "You're offline. Showing information saved 2 days ago." (or "We couldn't refresh…" when online). `discoverApi` has `refetchOnReconnect`, so a destination, search or home section on screen refetches when the connection returns: fresh data comes from the caches without a request, saved copies and failures are refreshed.
+
+Stored data is untrusted: each record is validated with a zod schema (`countryCodec`, `catalogueCodec`, `summaryCodec`; one malformed country is dropped, not the catalogue), carries a format `version` (another version is discarded), and is ignored if its timestamp is in the future. If the store itself fails (database unavailable, failed migration), the cache logs and works network-only; it never fails a load the network could answer. Records are pruned by age and count every 25 writes. Settings › Offline and data shows how much is saved and can clear it (`ClearSavedData`); the traveller's own tables are untouched.
+
+### Pending operations (transactional outbox)
+
+Repositories take a `LocalChangeLog` and record each change **inside the transaction that makes it**: `LocalTripRepository` (create, edit, cancel, delete), `LocalActivityRepository` (create, edit, complete, reorder, delete, and every neighbour whose position moved), `LocalExpenseRepository` (create, edit, delete; not conversions, which every device derives), `LocalFavoritesRepository` (favorites, custom collections, memberships as favorite updates; default collections exist on every device). If the outbox row can't be written the whole write rolls back, so the outbox never misses or invents a change. Photos are files and are out of scope.
+
+Only _which_ entity changed is recorded (state-based sync). `coalesce` keeps one operation per entity:
+
+| Pending      | + create / update      | + delete                         |
+| ------------ | ---------------------- | -------------------------------- |
+| none         | upsert (new if create) | delete                           |
+| upsert (new) | upsert (still new)     | removed: the remote never saw it |
+| upsert       | upsert                 | delete                           |
+| delete       | upsert (not new)       | delete                           |
+
+A new upsert that is being pushed is not removed by a delete; the delete follows it.
+
+| Concern                     | How                                                                                                                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Idempotency                 | Every version of a change gets a new `idempotencyKey` (`trip:trip-1:<id>`); every retry of that version reuses it. A backend applies a key once. A change made during a push keeps its newer key; the push's acknowledgement then only clears `isNew`. |
+| Retry policy                | `ExponentialSyncRetryPolicy`: 5 s, 10 s, 20 s… capped at 30 min, ±20 % jitter, at least `Retry-After`; 8 attempts; only `network`, `timeout`, `rateLimited`, `server`, `storage` are retried. Others are `failed` at once.                             |
+| Duplicate triggers          | `SyncEngine.sync()` is single-flight: a trigger during a run schedules one more run, never a parallel one. `claim` (`pending` → `inFlight`) is conditional, so an operation can't be pushed twice.                                                     |
+| Connection lost mid-request | An `offline`/`cancelled` result returns the operation to `pending` without counting an attempt and pauses until NetInfo reports online (or 30 s, for networks that look online but aren't).                                                            |
+| App restart                 | Operations left `inFlight` are reset to `pending` at start and re-sent with the same key.                                                                                                                                                              |
+| Gone entities               | An upsert whose entity no longer exists (deleted, or cascaded with its trip) is dropped; the delete is pushed instead.                                                                                                                                 |
+| Failed operations           | Kept with their last error until "Try again" (`retryFailed`); never dropped silently.                                                                                                                                                                  |
+| Accounts                    | Rows are per owner; the engine only handles the signed-in owner and stops mid-run if that changes.                                                                                                                                                     |
+
+In this build `syncGateway` is `LocalOnlySyncGateway`: the engine counts pending changes (phase `localOnly`) and never pushes. Offline and data says "Wanderly doesn't have cloud accounts yet, so your data isn't copied to your other devices or backed up by Wanderly." A backend replaces one factory in `features/sync/di.ts`; `syncEntitySources` already reads each entity type's current state for a push.
+
+### Conflict resolution (for a future backend)
+
+Not implemented, because there is nothing to conflict with. The intended strategy:
+
+1. **Server is the arbiter, versions detect conflicts.** Each entity gets a server `version`. A push sends the version it was based on; the server applies it only if it still matches, and answers `409` otherwise. The gateway maps `409` to a non-retryable error, so the operation is marked `failed`, not retried blindly.
+2. **Resolve per entity type, by field where it is safe.**
+   - Trips, activities: field-level last-writer-wins using `updatedAt`, except deletes, which win over edits (a deleted trip stays deleted). Activity order (`sortOrder`) is taken from the most recent reorder of that day as a whole, so a day is never half of each.
+   - Expenses: amounts and currencies are never merged silently; a conflicting edit keeps both versions and asks the traveller. Conversions are recomputed after any merge.
+   - Favorites: a set; saving is idempotent by `targetId`, memberships merge as a union unless one side removed a membership after the other added it.
+3. **Pull after push.** After pushing, the client pulls changes since its last cursor and applies them in one transaction per entity type, without recording them in the outbox.
+4. **Tombstones.** Deletes are kept server-side long enough for every device to pull them.
+
+### Edge cases
+
+| Case                             | Behaviour                                                                                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Connection lost during a request | HTTP: `network`/`timeout` with retry where idempotent (§ 4); the destination falls back to its saved copy. Sync: the operation goes back to `pending`, uncounted.                                                                                                                                |
+| App restarted while offline      | Trips, itineraries, expenses and favorites load from SQLite; destinations viewed before load from `cache_entries` with a saved-copy notice; the session is kept (§ 10).                                                                                                                          |
+| Stale cached information         | Fresh windows per data type; a saved copy is labelled with its age and never shown after 30 days; refetched on reconnect.                                                                                                                                                                        |
+| Duplicate retry operations       | One outbox row per entity, single-flight engine, conditional claim, idempotency keys.                                                                                                                                                                                                            |
+| Database migration failure       | Each migration and its version commit together; a failure leaves the last good version and is retried on the next statement (§ 14). Meanwhile repositories return `storage` (screens show it with Try again), the device cache works network-only, and Offline and data shows the storage error. |
+| API rate limits                  | `429` is `rateLimited`; the HTTP layer retries short `Retry-After`s; `PersistentCache` honours longer ones without requests (showing the saved copy) until they pass or the device reconnects; the country catalogue is fetched at most daily.                                                   |
+| Failed refresh                   | The saved copy stays on screen with its age; Try again, a reconnect or the next visit refreshes; failures are never cached.                                                                                                                                                                      |
+| Expense created offline          | Saved unconverted (§ 17); `useTripBudget` converts it when the device comes back online.                                                                                                                                                                                                         |
+
+### Testing
+
+`testing/offlineFixtures.ts` provides `createOfflineStorage` (real SQLite with every migration, the outbox and cache store; pass an `engine` to simulate a restart) and `FakeSyncGateway` (scripted results, records pushes and keys). Covered: the NetInfo adapter; `PersistentCache` (fresh, stale, fallback per error kind, max age, `notFound`, `Retry-After`, corrupt and old-format records, store failure, restart, pruning); the discover decorators (restart offline, memory not keeping saved copies, offline search, cached "no article"); `coalesce`, the SQLite outbox (coalescing, keys, rollback, claim, acknowledge during a push, reschedule, failed and retry, restart recovery, owners); the retry policy; the engine (local-only, push, offline wait, connection lost mid-request, captive-portal pause, backoff timer, failed and retry, single flight, restart re-send, gone entities, missing sources, signed out, unreadable database, debounce); repositories recording in the same transaction (including rollback when the outbox write fails); migrations 6 and 7 (upgrade, failure and retry); RTK Query reconnect; the indicator, Offline and data, the destination saved-copy notice after a restart offline, and conversion on reconnect.

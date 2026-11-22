@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
@@ -18,6 +18,7 @@ import {
   ListNavRow,
   OptionGroup,
   Screen,
+  SettingsSection,
   type Option,
 } from '@/shared/ui';
 
@@ -81,7 +82,7 @@ export function SettingsScreen() {
         onChange={settings.setLanguage}
       />
 
-      <Section title={t('settings.currency.title')} caption={t('settings.currency.hint')}>
+      <SettingsSection title={t('settings.currency.title')} caption={t('settings.currency.hint')}>
         <ListGroup>
           <ListNavRow
             icon="currency"
@@ -90,9 +91,9 @@ export function SettingsScreen() {
             onPress={() => setCurrencySheetOpen(true)}
           />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.notifications.title')} caption={t('settings.notifications.notSentYet')}>
+      <SettingsSection title={t('settings.notifications.title')} caption={t('settings.notifications.notSentYet')}>
         <ListGroup>
           <SettingSwitchRow
             icon="calendar"
@@ -108,23 +109,29 @@ export function SettingsScreen() {
             onChange={(enabled) => settings.setNotification('budgetAlerts', enabled)}
           />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.location.title')} caption={t('settings.location.hint')}>
+      <SettingsSection title={t('settings.location.title')} caption={t('settings.location.hint')}>
         <ListGroup>
           <LocationAccessRow />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.info.title')}>
+      <SettingsSection title={t('settings.offline.title')} caption={t('settings.offline.hint')}>
+        <ListGroup>
+          <ListNavRow icon="cloud" label={t('settings.offline.row')} onPress={() => router.push(routes.offlineData)} />
+        </ListGroup>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.info.title')}>
         <ListGroup>
           <ListNavRow icon="lock" label={t('settings.info.privacy')} onPress={() => router.push(routes.privacy)} />
           <AppDivider inset="xxxl" />
           <ListNavRow icon="info" label={t('settings.info.about')} onPress={() => router.push(routes.about)} />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.account.title')}>
+      <SettingsSection title={t('settings.account.title')}>
         <AppButton
           label={t('auth.profile.signOut')}
           variant="outline"
@@ -133,7 +140,7 @@ export function SettingsScreen() {
           loading={signOutPending}
           onPress={confirmSignOut}
         />
-      </Section>
+      </SettingsSection>
 
       {__DEV__ ? <DeveloperSection /> : null}
 
@@ -148,28 +155,6 @@ export function SettingsScreen() {
         }}
       />
     </Screen>
-  );
-}
-
-function Section({ title, caption, children }: { title: string; caption?: string; children: ReactNode }) {
-  const { spacing } = useAppTheme();
-  return (
-    <View style={{ gap: spacing.sm }}>
-      <AppText
-        variant="sectionTitle"
-        color="textSecondary"
-        accessibilityRole="header"
-        style={{ paddingHorizontal: spacing.xs }}
-      >
-        {title}
-      </AppText>
-      {children}
-      {caption ? (
-        <AppText variant="caption" color="textSecondary" style={{ paddingHorizontal: spacing.xs }}>
-          {caption}
-        </AppText>
-      ) : null}
-    </View>
   );
 }
 

@@ -6,6 +6,7 @@ import { type UseCase } from '@/core/usecase/UseCase';
 
 import { readRestCountriesApiKey, restCountriesApi, WIKIPEDIA_API } from './data/apis';
 import { CachedCountryRepository, CachedPlaceContentRepository } from './data/caching';
+import { PersistentCountryRepository, PersistentPlaceContentRepository } from './data/persistentCaching';
 import { RestCountriesRepository } from './data/RestCountriesRepository';
 import { StorageDiscoveryHistoryRepository } from './data/StorageDiscoveryHistoryRepository';
 import { WikipediaPlaceContentRepository } from './data/WikipediaPlaceContentRepository';
@@ -64,9 +65,20 @@ export interface DiscoverDependencies {
   readonly clearRecentlyViewed: UseCase<void, readonly RecentDestination[]>;
 }
 
+const persistentDependencies = (c: CoreDependencies) => ({
+  store: c.cacheStore,
+  clock: c.clock,
+  logger: c.logger.child({ scope: 'discoverCache' }),
+  connectivity: c.connectivity,
+});
+
 /**
- * Remote repositories are wrapped in in-memory caches (Decorator), so every use
- * case shares one country catalogue and one copy of each Wikipedia summary.
+ * Remote repositories are wrapped twice (Decorator): a device cache (SQLite) so
+ * destinations viewed once work offline and after a restart, and an in-memory
+ * cache so every use case shares one country catalogue and one copy of each
+ * Wikipedia summary without re-reading the device.
+ *
+ *   Memory (TTL, coalescing) → Persistent (SQLite, saved-copy fallback) → Remote (HTTP)
  */
 export const discoverFactories: Factories<DiscoverDependencies, CoreDependencies & DiscoverDependencies> = {
   restCountriesApiKey: (c) => {
@@ -78,16 +90,22 @@ export const discoverFactories: Factories<DiscoverDependencies, CoreDependencies
   },
   countryRepository: (c) =>
     new CachedCountryRepository(
-      new RestCountriesRepository({
-        http: c.httpClientFactory.create(restCountriesApi(c.restCountriesApiKey)),
-        apiKey: c.restCountriesApiKey,
-        logger: c.logger.child({ scope: 'restcountries' }),
-      }),
+      new PersistentCountryRepository(
+        new RestCountriesRepository({
+          http: c.httpClientFactory.create(restCountriesApi(c.restCountriesApiKey)),
+          apiKey: c.restCountriesApiKey,
+          logger: c.logger.child({ scope: 'restcountries' }),
+        }),
+        persistentDependencies(c),
+      ),
       c.clock,
     ),
   placeContentRepository: (c) =>
     new CachedPlaceContentRepository(
-      new WikipediaPlaceContentRepository(c.httpClientFactory.create(WIKIPEDIA_API)),
+      new PersistentPlaceContentRepository(
+        new WikipediaPlaceContentRepository(c.httpClientFactory.create(WIKIPEDIA_API)),
+        persistentDependencies(c),
+      ),
       c.clock,
     ),
   discoveryHistoryRepository: (c) =>

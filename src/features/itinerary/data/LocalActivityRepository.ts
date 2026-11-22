@@ -4,12 +4,16 @@ import { type SqlDatabase, type SqlExecutor, type SqlValue } from '@/core/databa
 import { AppError } from '@/core/errors/AppError';
 import { type Logger } from '@/core/logging/Logger';
 import { err, ok, type Result } from '@/core/result';
+import { type LocalChangeKind, type LocalChangeLog, NO_CHANGE_LOG } from '@/core/sync/LocalChange';
 import { isLocalDate, type LocalDate } from '@/features/trips/domain/localDate';
 import { isCurrencyCode } from '@/features/trips/domain/money';
 
 import { type Activity, ACTIVITY_CATEGORIES } from '../domain/Activity';
 import { isLocalTime } from '../domain/localTime';
 import { type ActivityRepository } from '../domain/repositories';
+
+/** Entity type in the sync outbox. */
+export const ACTIVITY_SYNC_ENTITY = 'activity';
 
 const COLUMNS = `id, trip_id, title, description, category, date, start_time, end_time, latitude, longitude,
   address, estimated_cost_minor, currency, notes, sort_order, is_completed, created_at, updated_at`;
@@ -78,6 +82,7 @@ export class LocalActivityRepository implements ActivityRepository {
   constructor(
     private readonly database: SqlDatabase,
     private readonly logger: Logger,
+    private readonly changeLog: LocalChangeLog = NO_CHANGE_LOG,
   ) {}
 
   listByTrip(ownerId: string, tripId: string): Promise<Result<readonly Activity[], AppError>> {
@@ -116,7 +121,9 @@ export class LocalActivityRepository implements ActivityRepository {
             activity.updatedAt,
           ],
         );
-        await placeAt(tx, ownerId, activity, activity.sortOrder);
+        const moved = await placeAt(tx, ownerId, activity, activity.sortOrder);
+        await this.record(tx, ownerId, [activity.id], 'create');
+        await this.record(tx, ownerId, without(moved, activity.id), 'update');
       }),
     );
   }
@@ -133,8 +140,9 @@ export class LocalActivityRepository implements ActivityRepository {
            WHERE id = ? AND owner_id = ?`,
           [...editableValues(activity), activity.isCompleted ? 1 : 0, activity.updatedAt, activity.id, ownerId],
         );
-        if (previous.date !== activity.date) await renumber(tx, ownerId, previous);
-        await placeAt(tx, ownerId, { ...activity, tripId: previous.tripId }, activity.sortOrder);
+        const moved = previous.date !== activity.date ? await renumber(tx, ownerId, previous) : [];
+        moved.push(...(await placeAt(tx, ownerId, { ...activity, tripId: previous.tripId }, activity.sortOrder)));
+        await this.record(tx, ownerId, [activity.id, ...without(moved, activity.id)], 'update');
         return true;
       }),
     );
@@ -147,7 +155,8 @@ export class LocalActivityRepository implements ActivityRepository {
         const day = await dayOf(tx, ownerId, id);
         if (!day) return false;
         await tx.run('DELETE FROM activities WHERE id = ? AND owner_id = ?', [id, ownerId]);
-        await renumber(tx, ownerId, day);
+        await this.record(tx, ownerId, [id], 'delete');
+        await this.record(tx, ownerId, await renumber(tx, ownerId, day), 'update');
         return true;
       }),
     );
@@ -160,13 +169,16 @@ export class LocalActivityRepository implements ActivityRepository {
     isCompleted: boolean,
     updatedAt: number,
   ): Promise<Result<void, AppError>> {
-    const updated = await this.attempt('update the activity', async () => {
-      const { changes } = await this.database.run(
-        'UPDATE activities SET is_completed = ?, updated_at = ? WHERE id = ? AND owner_id = ?',
-        [isCompleted ? 1 : 0, updatedAt, id, ownerId],
-      );
-      return changes > 0;
-    });
+    const updated = await this.attempt('update the activity', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run(
+          'UPDATE activities SET is_completed = ?, updated_at = ? WHERE id = ? AND owner_id = ?',
+          [isCompleted ? 1 : 0, updatedAt, id, ownerId],
+        );
+        if (changes > 0) await this.record(tx, ownerId, [id], 'update');
+        return changes > 0;
+      }),
+    );
     return this.requireFound(updated, id);
   }
 
@@ -209,10 +221,18 @@ export class LocalActivityRepository implements ActivityRepository {
             ownerId,
           ]);
         }
+        await this.record(tx, ownerId, [...orderedIds, ...unreadable], 'update');
         return true;
       }),
     );
     return this.requireFound(reordered, `${tripId}/${date}`);
+  }
+
+  private record(tx: SqlExecutor, ownerId: string, ids: readonly string[], kind: LocalChangeKind) {
+    return this.changeLog.record(
+      tx,
+      ids.map((entityId) => ({ ownerId, entityType: ACTIVITY_SYNC_ENTITY, entityId, kind })),
+    );
   }
 
   private requireFound(result: Result<boolean, AppError>, id: string): Result<void, AppError> {
@@ -286,29 +306,37 @@ function dayPositions(tx: SqlExecutor, ownerId: string, { tripId, date }: DayKey
 const isRowWithId = (row: unknown): row is { readonly id: string } =>
   typeof row === 'object' && row !== null && 'id' in row && typeof row.id === 'string';
 
-/** Numbers `rows` 0..n-1 in the given order, writing only the rows whose position changes. */
-async function writePositions(tx: SqlExecutor, ownerId: string, rows: readonly Position[]): Promise<void> {
+const without = (ids: readonly string[], id: string) => ids.filter((candidate) => candidate !== id);
+
+/**
+ * Numbers `rows` 0..n-1 in the given order, writing only the rows whose position
+ * changes. Returns their ids: a moved activity changed too, so it is synced.
+ */
+async function writePositions(tx: SqlExecutor, ownerId: string, rows: readonly Position[]): Promise<string[]> {
+  const moved: string[] = [];
   for (const [index, row] of rows.entries()) {
     if (row.sort_order === index) continue;
     await tx.run('UPDATE activities SET sort_order = ? WHERE id = ? AND owner_id = ?', [index, row.id, ownerId]);
+    moved.push(row.id);
   }
+  return moved;
 }
 
-/** Closes the gap an activity left in its day. */
-async function renumber(tx: SqlExecutor, ownerId: string, day: DayKey): Promise<void> {
-  await writePositions(tx, ownerId, await dayPositions(tx, ownerId, day));
+/** Closes the gap an activity left in its day. Returns the ids that moved. */
+function renumber(tx: SqlExecutor, ownerId: string, day: DayKey): Promise<string[]> {
+  return dayPositions(tx, ownerId, day).then((rows) => writePositions(tx, ownerId, rows));
 }
 
-/** Puts `activity` at `position` (clamped) on its day and numbers the day 0..n-1. */
+/** Puts `activity` at `position` (clamped) on its day and numbers the day 0..n-1. Returns the ids that moved. */
 async function placeAt(
   tx: SqlExecutor,
   ownerId: string,
   activity: Pick<Activity, 'id' | 'tripId' | 'date'>,
   position: number,
-): Promise<void> {
+): Promise<string[]> {
   const others = await dayPositions(tx, ownerId, activity, activity.id);
   const index = Math.min(Math.max(position, 0), others.length);
-  await writePositions(tx, ownerId, [
+  return writePositions(tx, ownerId, [
     ...others.slice(0, index),
     { id: activity.id, sort_order: position },
     ...others.slice(index),

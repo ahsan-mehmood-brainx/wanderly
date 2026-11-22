@@ -1,10 +1,12 @@
 import { APP_MIGRATIONS } from '@/bootstrap/databaseMigrations';
+import { SqliteCacheStore } from '@/core/cache/SqliteCacheStore';
 import { createAppConfig } from '@/core/config/appConfig';
 import { SqliteDatabase } from '@/core/database/SqliteDatabase';
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { createContainer, type Factories, valueFactories } from '@/core/di/createContainer';
 import { type LogContext, type Logger } from '@/core/logging/Logger';
+import { SqliteSyncOutbox } from '@/core/sync/SqliteSyncOutbox';
 import { authFactories } from '@/features/auth/di';
 import { budgetFactories } from '@/features/budget/di';
 import { discoverFactories } from '@/features/discover/di';
@@ -15,6 +17,7 @@ import { onboardingFactories } from '@/features/onboarding/di';
 import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { profileFactories } from '@/features/profile/di';
+import { syncFactories } from '@/features/sync/di';
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
@@ -60,6 +63,10 @@ export function testCoreFactories(): Factories<CoreDependencies> {
     // Real SQLite in memory, one database per container.
     database: (c) =>
       new SqliteDatabase({ driver: nodeSqliteDriver().driver, migrations: APP_MIGRATIONS, logger: c.logger }),
+    cacheStore: (c) => new SqliteCacheStore(c.database),
+    // Their own ids, so idempotency keys don't shift the sequential ids feature tests expect.
+    syncOutbox: (c) => new SqliteSyncOutbox(c.database, c.clock, sequentialIds('op'), c.logger),
+    localChangeLog: (c) => new SqliteSyncOutbox(c.database, c.clock, sequentialIds('op'), c.logger),
     connectivity: () => new FakeConnectivityService(),
     httpClientFactory: () => new FakeHttpClientFactory(),
   };
@@ -85,6 +92,7 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...budgetFactories,
     ...profileFactories,
     ...photosFactories,
+    ...syncFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.

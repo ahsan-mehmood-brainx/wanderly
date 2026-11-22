@@ -222,7 +222,7 @@ describe('LocalPhotoRepository', () => {
     });
 
     it('is migration 5, after the budget', () => {
-      expect(APP_MIGRATIONS.map(({ version }) => version)).toEqual([1, 2, 3, 4, 5]);
+      expect(APP_MIGRATIONS.map(({ version }) => version).slice(0, 5)).toEqual([1, 2, 3, 4, 5]);
       expect(APP_MIGRATIONS[4]?.name).toMatch(/photos/);
     });
 
@@ -258,7 +258,7 @@ describe('LocalPhotoRepository', () => {
       const repository = new LocalPhotoRepository(upgraded, logger);
       expect((await repository.insertMany(TRIP_OWNER, [photo({ activityId: 'act-1' })])).ok).toBe(true);
 
-      await expect(upgraded.getFirst('PRAGMA user_version')).resolves.toEqual({ user_version: 5 });
+      await expect(upgraded.getFirst('PRAGMA user_version')).resolves.toEqual({ user_version: APP_MIGRATIONS.length });
       expect(unwrap(await new LocalTripRepository(upgraded, logger).list(TRIP_OWNER))).toEqual([PHOTOS_TRIP]);
       expect(unwrap(await new LocalActivityRepository(upgraded, logger).listByTrip(TRIP_OWNER, 'trip-1'))).toHaveLength(
         1,

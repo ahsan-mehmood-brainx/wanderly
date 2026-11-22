@@ -818,6 +818,11 @@ export const en = {
       "Country data services don't cover cities and attractions, so details here come from Wikipedia and may be limited.",
     flagOf: 'Flag of {{country}}',
     photoOf: 'Photo of {{name}}',
+    saved: {
+      title: 'Saved information',
+      offline: "You're offline. Showing information saved {{age}}. It refreshes when you're back online.",
+      error: "We couldn't refresh this destination. Showing information saved {{age}}.",
+    },
   },
   weather: {
     title: 'Weather',
@@ -1050,13 +1055,18 @@ export const en = {
       title: 'Developer',
       designSystem: 'Design system',
     },
+    offline: {
+      title: 'Offline',
+      row: 'Offline and data',
+      hint: 'See what works without a connection and manage saved information.',
+    },
   },
   privacy: {
     title: 'Privacy',
     intro: 'Wanderly keeps your travel plans on this device. Here is what it stores and which services it talks to.',
     device: {
       title: 'Stored on this device',
-      body: 'Your trips, itineraries, budgets, expenses, saved places and local profile are saved on this phone only, separately for each account. Your settings are saved on this phone too and are shared by every account that signs in on it. Your sign-in session is kept in secure storage.',
+      body: 'Your trips, itineraries, budgets, expenses, saved places and local profile are saved on this phone only, separately for each account. Your settings are saved on this phone too and are shared by every account that signs in on it. Your sign-in session is kept in secure storage. Destination information you viewed is kept here for up to 30 days so it opens offline; you can clear it in Settings › Offline and data.',
     },
     location: {
       title: 'Your location',
@@ -1222,6 +1232,61 @@ export const en = {
       notFoundTitle: 'Photo not found',
       notFoundMessage: 'It may have been deleted.',
       backToGallery: 'Back to photos',
+    },
+  },
+  offline: {
+    indicator: {
+      offline: 'Offline',
+      backOnline: 'Back online',
+      offlineA11y: "You're offline. Your changes are saved on this device. Opens Offline and data.",
+      backOnlineA11y: "You're back online. Opens Offline and data.",
+      announceOffline: "You're offline. Your changes are saved on this device.",
+      announceOnline: "You're back online.",
+    },
+    screen: {
+      title: 'Offline and data',
+      connectionTitle: 'Connection',
+      online: 'Online',
+      onlineVia: 'Online ({{type}})',
+      offline: 'Offline',
+      connectionTypes: {
+        wifi: 'Wi-Fi',
+        cellular: 'mobile data',
+        ethernet: 'Ethernet',
+        bluetooth: 'Bluetooth',
+        vpn: 'VPN',
+        wimax: 'WiMAX',
+      },
+      checking: 'Checking connection',
+      offlineHint:
+        'Trips, itineraries, expenses and saved places keep working. Destinations you viewed before open from this device.',
+      onlineHint: 'Information from the internet refreshes by itself when it is out of date.',
+      yourDataTitle: 'Your data',
+      yourDataHint:
+        'Trips, itineraries, expenses and saved places are stored on this device and work without a connection.',
+      localOnly:
+        "Wanderly doesn't have cloud accounts yet, so your data isn't copied to your other devices or backed up by Wanderly.",
+      unsynced_one: '{{count}} change saved only on this device',
+      unsynced_other: '{{count}} changes saved only on this device',
+      noUnsynced: 'No changes waiting',
+      unsyncedHint: 'Changes are tracked so a future cloud backup could upload them.',
+      waiting_one: '{{count}} change waiting to upload',
+      waiting_other: '{{count}} changes waiting to upload',
+      failed_one: "{{count}} change couldn't be uploaded",
+      failed_other: "{{count}} changes couldn't be uploaded",
+      retryFailed: 'Try again',
+      savedInfoTitle: 'Saved destination information',
+      savedInfoHint: 'Countries and destinations you viewed are kept for up to 30 days, so they open offline.',
+      savedInfoEmpty: 'Nothing saved yet',
+      savedInfoCount_one: '{{count}} item, {{size}}',
+      savedInfoCount_other: '{{count}} items, {{size}}',
+      savedInfoUpdated: 'Last updated {{age}}',
+      clearSaved: 'Clear saved information',
+      clearConfirmTitle: 'Clear saved information?',
+      clearConfirmMessage:
+        "Destination information is downloaded again the next time you're online. Your trips, expenses and saved places stay.",
+      clearConfirm: 'Clear',
+      cleared: 'Saved information cleared.',
     },
   },
 } as const;

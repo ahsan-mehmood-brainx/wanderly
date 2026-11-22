@@ -45,6 +45,9 @@ export const CACHE_SECONDS = {
 export const discoverApi = createApi({
   reducerPath: 'discoverApi',
   baseQuery: fakeBaseQuery<DiscoverQueryError>(),
+  // When the device comes back online, screens on display refetch. Fresh data is served by the
+  // repositories' caches without a request; saved copies and failures are refreshed (see § 20).
+  refetchOnReconnect: true,
   endpoints: (build) => ({
     searchDestinations: build.query<SearchOutcome, SearchArgs>({
       queryFn: async (args, api) =>

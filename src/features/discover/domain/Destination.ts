@@ -62,6 +62,8 @@ export interface PlaceSummary {
   readonly imageUrl: string | null;
   readonly articleUrl: string | null;
   readonly coordinates: Coordinates | null;
+  /** As `Country.savedAt`: set only for a saved copy shown because a refresh failed. */
+  readonly savedAt?: number;
 }
 
 /** One Wikipedia title-search hit, before it is classified as a destination (or discarded). */
@@ -99,6 +101,8 @@ export interface CountryDestinationDetails {
   readonly description: DescriptionState;
   readonly neighbours: readonly Neighbour[];
   readonly essentials: TravelEssentials;
+  /** See {@link savedAtOf}. */
+  readonly savedAt?: number;
 }
 
 export interface PlaceDestinationDetails {
@@ -110,9 +114,22 @@ export interface PlaceDestinationDetails {
   /** Host country, when known. Its essentials double as the place's practical information. */
   readonly country: Country | null;
   readonly essentials: TravelEssentials | null;
+  /** See {@link savedAtOf}. */
+  readonly savedAt?: number;
 }
 
 export type DestinationDetails = CountryDestinationDetails | PlaceDestinationDetails;
+
+/**
+ * When some of a destination's information is a saved copy shown because it couldn't
+ * be refreshed, the download time of the oldest such part; `undefined` when all of
+ * it is current. The screen says so ("Saved information from 3 days ago").
+ */
+export function savedAtOf(country: Pick<Country, 'savedAt'> | null, description: DescriptionState): number | undefined {
+  const times = [country?.savedAt, description.status === 'available' ? description.summary.savedAt : undefined];
+  const known = times.filter((time): time is number => time !== undefined);
+  return known.length > 0 ? Math.min(...known) : undefined;
+}
 
 export function essentialsOf(country: Country): TravelEssentials {
   return {

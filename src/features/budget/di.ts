@@ -47,7 +47,8 @@ export const budgetFactories: Factories<
   BudgetDependencies,
   CoreDependencies & Pick<TripsDependencies, 'tripRepository' | 'tripOwnerProvider'> & BudgetDependencies
 > = {
-  expenseRepository: (c) => new LocalExpenseRepository(c.database, c.logger.child({ scope: 'budget' })),
+  expenseRepository: (c) =>
+    new LocalExpenseRepository(c.database, c.logger.child({ scope: 'budget' }), c.localChangeLog),
   exchangeRateCache: (c) => new LocalExchangeRateCache(c.database, c.logger.child({ scope: 'budget' })),
   exchangeRateRepository: (c) =>
     new CachedExchangeRateRepository(

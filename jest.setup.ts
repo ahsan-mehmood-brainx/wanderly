@@ -3,6 +3,10 @@ import { type ViewProps } from 'react-native';
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
+// NetInfo has no native side in Jest. Tests use FakeConnectivityService; this keeps the production
+// adapter (built by the composition root tests) from touching the missing native module.
+jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock.js'));
+
 // Gesture Handler, Worklets and Reanimated have no native side in Jest. These mocks run gesture
 // callbacks and worklets on the JS thread, so tests can drive gestures with `fireGestureHandler`.
 // Reanimated's own mock loads its real entry point, which throws here, hence the local one. It also

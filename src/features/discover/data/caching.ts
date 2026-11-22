@@ -6,6 +6,7 @@ import { type Clock } from '@/core/utils/Clock';
 import { type Country } from '../domain/Country';
 import { type PlaceSearchHit, type PlaceSummary } from '../domain/Destination';
 import { type CountryRepository, type PlaceContentRepository } from '../domain/repositories';
+import { isCurrentCountry, isCurrentCountryList, isCurrentSummary } from './persistentCaching';
 
 // The shared request deliberately ignores callers' signals (see MemoryCache).
 const NO_SIGNAL = undefined;
@@ -14,7 +15,8 @@ const NO_SIGNAL = undefined;
 export const COUNTRY_CACHE_TTL_MS = 60 * 60_000;
 
 /**
- * Caches the country catalogue and per-country details in memory. Search,
+ * Caches the country catalogue and per-country details in memory. A saved copy
+ * shown because a refresh failed (`savedAt`) is passed through but not kept. Search,
  * filters, the home feed and details all read the catalogue, so without this
  * each screen would spend the REST Countries rate limit (20 requests / 10 s) again.
  */
@@ -27,8 +29,8 @@ export class CachedCountryRepository implements CountryRepository {
     clock: Clock,
     ttlMs: number = COUNTRY_CACHE_TTL_MS,
   ) {
-    this.catalogue = new MemoryCache({ ttlMs, maxEntries: 1, clock });
-    this.details = new MemoryCache({ ttlMs, maxEntries: 60, clock });
+    this.catalogue = new MemoryCache({ ttlMs, maxEntries: 1, clock, shouldCache: isCurrentCountryList });
+    this.details = new MemoryCache({ ttlMs, maxEntries: 60, clock, shouldCache: isCurrentCountry });
   }
 
   getAll(signal?: AbortSignal): Promise<Result<readonly Country[], AppError>> {
@@ -56,7 +58,7 @@ export class CachedPlaceContentRepository implements PlaceContentRepository {
     clock: Clock,
     ttlMs: number = SUMMARY_CACHE_TTL_MS,
   ) {
-    this.summaries = new MemoryCache({ ttlMs, maxEntries: 150, clock });
+    this.summaries = new MemoryCache({ ttlMs, maxEntries: 150, clock, shouldCache: isCurrentSummary });
   }
 
   getSummary(title: string, signal?: AbortSignal): Promise<Result<PlaceSummary | null, AppError>> {

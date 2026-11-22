@@ -17,6 +17,7 @@ import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
 import { profileFactories } from '@/features/profile/di';
+import { syncFactories } from '@/features/sync/di';
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
@@ -59,6 +60,7 @@ export function createAppContainer(): AppContainer {
     ...budgetFactories,
     ...profileFactories,
     ...photosFactories,
+    ...syncFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

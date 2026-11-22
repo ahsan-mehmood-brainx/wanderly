@@ -53,8 +53,9 @@ src/
 - **Networking.** `HttpClient` is a facade over axios, with interceptors (offline guard, language, auth), timeouts, cancellation (`AbortSignal`), retries with backoff, and zod validation. Every call returns `Result<ApiResponse<T>, ApiError>` and never throws. Clients are created per API by `HttpClientFactory`. Only `src/core/http` imports axios.
 - **Errors.** Repositories and the HTTP client return `Result<T, AppError>`. One taxonomy (`AppErrorKind`: `offline`, `timeout`, `notFound`, `server`, `parse`, …) runs from the transport to the UI, and `<AppErrorView errorKind={…} />` shows translated copy for each kind.
 - **Validation.** Data read from storage and API responses is parsed with Zod. For stored data, each field falls back on its own, so one bad value doesn't wipe the rest.
-- **Connectivity and logging.** `ConnectivityService` (expo-network) is observable (`useConnectivity()`). `Logger` has levels, scoped child loggers, secret redaction and pluggable transports (console in every build, `warn`+ in release; Sentry later).
+- **Connectivity and logging.** `ConnectivityService` (NetInfo) is observable (`useConnectivity()`). `Logger` has levels, scoped child loggers, secret redaction and pluggable transports (console in every build, `warn`+ in release; Sentry later).
 - **State.** Redux Toolkit holds app state. Server data uses RTK Query (`discoverApi`), whose endpoints call use cases through `queryFn` instead of a `baseQuery`, so HTTP, validation and error mapping stay in the data layer. RTK Query adds per-argument caching, de-duplication and out-of-order protection on top. See [ARCHITECTURE.md § 11](docs/ARCHITECTURE.md#11-discover-and-destination-search).
+- **Offline-first.** The traveller's data lives in SQLite and works offline. Destination information viewed once is kept on the device (`PersistentCache`, SQLite) and shown as a labelled saved copy when it can't be refreshed; RTK Query refetches on reconnect. Every local change is recorded in a transactional outbox with idempotency keys, and a sync engine with retries is ready for a future backend. There is no backend, so nothing syncs between devices, and Settings › Offline and data says so. See [ARCHITECTURE.md § 20](docs/ARCHITECTURE.md#20-offline-first).
 - **i18n.** English, Spanish and Urdu. Translation keys are type-checked. Every locale must match the shape of `en.ts`, so a missing or extra key is a compile error. To add a language, add a locale file, add it to `SUPPORTED_LANGUAGES` (and `RTL_LANGUAGES` if it is written right to left), and add it to `supportedLocales` in `app.json`. Urdu lays the app out right to left; see [ARCHITECTURE.md § 18](docs/ARCHITECTURE.md#18-profile-settings-and-localization). **Release blocker:** the Urdu strings in `src/core/i18n/locales/ur.ts` are machine-written. A native speaker must review their meaning (including the privacy wording) and sign off before any release that ships Urdu. The automated tests only check key parity, placeholders and script.
 - **Theming.** Use `useAppTheme()` for colours, spacing, and typography, and don't hard-code colours. The user's theme choice is also applied to native UI through `Appearance.setColorScheme`.
 
@@ -85,9 +86,9 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 3   | Nearby places and map: OpenStreetMap places and search, filters, pins, directions                     | Done    |
 | 4   | Trips and itineraries: trips in SQLite; day-by-day itinerary with drag-and-drop, conflicts, progress  | Done    |
 | 5   | Expense tracking: trip budgets, expenses in SQLite, Frankfurter conversion, category and daily charts | Done    |
-| 6   | Favourites                                                                                            | Planned |
+| 6   | Favourites                                                                                            | Done    |
 | 6.1 | Profile and settings: local profile, travel stats, currency and notification preferences, Urdu (RTL)  | Done    |
-| 7   | Offline support                                                                                       | Planned |
+| 7   | Offline-first: NetInfo, offline indicator, saved destination data, outbox and sync abstraction        | Done    |
 | 8   | Observability (Sentry), E2E (Maestro), EAS Build/Update                                               | Planned |
 
 ## Third-party data and attribution
