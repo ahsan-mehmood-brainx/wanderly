@@ -42,6 +42,19 @@ export interface ExpenseRouteParams extends Record<string, string> {
   readonly expenseId: string;
 }
 
+export interface PhotoFlowRouteParams extends Record<string, string | undefined> {
+  readonly tripId: string;
+  /** Set when the photos are for one of the trip's activities. */
+  readonly activityId?: string;
+}
+
+export interface PhotoRouteParams extends Record<string, string | undefined> {
+  readonly tripId: string;
+  readonly photoId: string;
+  /** Set when opened from an activity's gallery. */
+  readonly activityId?: string;
+}
+
 export interface CollectionRouteParams extends Record<string, string> {
   readonly collectionId: string;
 }
@@ -105,6 +118,24 @@ export const routes = {
     ({ pathname: '/budget/[tripId]/expenses/[expenseId]/edit', params: { tripId, expenseId } }) satisfies Href,
   spendingBreakdown: (tripId: string) =>
     ({ pathname: '/budget/[tripId]/breakdown', params: { tripId } }) satisfies Href,
+  tripPhotos: (tripId: string) => ({ pathname: '/trips/[tripId]/photos', params: { tripId } }) satisfies Href,
+  activityPhotos: (tripId: string, itemId: string) =>
+    ({ pathname: '/trips/[tripId]/itinerary/[itemId]/photos', params: { tripId, itemId } }) satisfies Href,
+  photoCamera: (tripId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/camera',
+      params: activityId === null ? { tripId } : { tripId, activityId },
+    }) satisfies Href,
+  photoPreview: (tripId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/preview',
+      params: activityId === null ? { tripId } : { tripId, activityId },
+    }) satisfies Href,
+  photo: (tripId: string, photoId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/[photoId]',
+      params: activityId === null ? { tripId, photoId } : { tripId, photoId, activityId },
+    }) satisfies Href,
 } as const satisfies Record<string, Href | ((...args: never[]) => Href)>;
 
 const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

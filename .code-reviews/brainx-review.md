@@ -1,191 +1,103 @@
 ---
-diff_hash: c8d97e5c1a3112776ee8daa8a22a491d79559ddf6936651e68712c1ecda664ed
-reviewed_at: 2026-11-20T19:30:13Z
+diff_hash: 3fb2d238cc50d025362d146336b48229db43666646e0c61fae4e6bd0d1b869e5
+reviewed_at: 2026-11-22T18:35:59Z
 ---
 
 ## Summary
 
-This diff covers a profile and settings overhaul plus Urdu/RTL support:
-
-- **Profile feature (`src/features/profile`).** It has an owner-scoped local profile (display name, home base, bio, photo) stored as zod-validated JSON, and a FileSystem photo store gated by a reference regex. There are save/pick use cases, a slice with request-id staleness guards, travel stats, and new Profile and Edit Profile screens. The old `auth` ProfileScreen is removed, and nothing imports it any more.
-- **Preferences.** A default-currency preference is added, which preselects the currency on New Trip only. Notification switches are merged one at a time. Settings gains a location-permission row (with AppState refresh and race guard) and new About and Privacy screens.
-- **i18n.** Urdu is added with RTL: `LayoutDirectionProvider`, `applyNativeLayoutDirection` (allowRTL/forceRTL plus a restart notice), RTL-aware `AppText`/`AppInput`/`AppIcon`/`Screen`/`AppBottomSheet`, a new `ListGroup`, and Urdu typography scaling. A test enforces matching keys and placeholders across en/es/ur.
-- **Docs.** README and ARCHITECTURE are updated.
-
-Stack: React (Expo SDK 58 / React Native 0.88). I reviewed it with the React criteria adapted to RN. `tsc --noEmit` exits 0, `expo lint` exits 0, and the full Jest run passes (198 suites, 2435 tests).
-
-Security looks sound:
-
-- Photo paths are gated by `^profile-photos\/[A-Za-z0-9_-]+\.[a-z0-9]+$` before every remove/displayUri, with allow-listed extensions.
-- Profile storage is keyed per owner (`profile.local.v1.<ownerId>`) and the slice is reset on sign-in/sign-out/session expiry.
-- Stored preferences and profile JSON are validated field by field with safe fallbacks.
-- Photo replacement order is safe: the new photo is imported, then the profile is saved, and only then is the old photo deleted. If the save fails, the imported copy is cleaned up.
-
-The previous `.code-reviews/brainx-review.md` was the finalized review of the already committed budget change (d7c27d7). This diff deletes it and none of its findings touch these files, so this is a fresh review.
-
-The main issue is user-facing privacy copy that misdescribes which services receive location data. `src/core/i18n/locales/ur.ts` notes that the Urdu strings are machine-written and need native-speaker review (privacy copy included) before Urdu ships. That is a release step, not a code finding.
+Adds the photos feature (feature 09/photos): camera capture and library picking, JPEG re-encoding to app storage, a `photos` SQLite table (migration 5, owner-scoped queries), gallery/viewer/preview screens, trip cover from a gallery photo (`SetTripCover`), orphan file pruning, and en/es/ur strings. Stack: React (Expo / React Native). Ownership checks, reference-pattern validation, cleanup on partial failure and permission handling look sound. Three minor findings.
 
 ## Findings
 
 ### Critical (0)
 
-### High (1)
-- **src/core/i18n/locales/en.ts:1071**: The Privacy screen says the map tiles come from OpenStreetMap and that location is rounded before it goes to the map services. In fact the base map is Apple Maps / Google Maps, which the services list doesn't mention. *(correctness / privacy disclosure)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `PrivacyScreen.tsx:8` lists `dummyJson, restCountries, wikipedia, openMeteo, openStreetMap, frankfurter`, and `privacy.services.openStreetMap` reads "OpenStreetMap: map tiles and nearby places." But `MapCanvas.tsx` renders `<MapView>` with no `provider` or `UrlTile` (its own doc comment says "the platform's own base map (Apple Maps / Google Maps)") and passes `showsUserLocation`. The platform map SDK therefore loads the tiles and reads the exact position for the user dot. `privacy.location.body` (en.ts:1063) adds "It is rounded before it is sent to the weather and map services", but rounding only happens on Wanderly's own requests (Overpass nearby search and the weather `COORDINATE_DECIMALS = 2`). Place search text also goes to Nominatim, and nearby places come from overpass-api.de; neither is named. A privacy disclosure that names the wrong processor and overstates protections is misleading to users and a store-review risk. The same text is in es.ts and ur.ts. Fix: list Apple Maps / Google Maps as the base-map provider, name Nominatim/Overpass accurately, and limit the rounding claim to the weather and nearby-places requests. Then have the copy reviewed before release.
+### High (0)
 
-### Medium (0)
+### Medium (1)
+- **src/features/photos/presentation/hooks/usePhotos.ts:91** — `items` calls `photoFileStore.exists()` (a synchronous file-system stat) for every photo inside a `useMemo` that recomputes whenever `activities`, `photos` or the store change. With up to 200 photos per trip this blocks the JS thread on each recompute. *(performance)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: existence results are now cached per reference in a store-keyed map (usePhotos.ts:37-99), so each file is stat-ed once instead of on every recompute.
 
-### Low (11)
-- **src/core/i18n/locales/en.ts:1063**: The location privacy copy says position "is never stored with your trips" but doesn't mention that a rounded position is kept with cached weather forecasts. *(correctness / privacy disclosure)*
-  - status: open
+### Low (2)
+- **src/features/photos/domain/usecases/photoUseCases.ts:158** — The per-trip photo cap is enforced by a read-then-insert (`countByTrip` then `insertMany`) with no atomic guard, so two overlapping attaches could exceed `MAX_PHOTOS_PER_TRIP`. *(correctness)*
+  - status: fixed
+  - dev_reasoning: The cap is already authoritative in LocalPhotoRepository.insertMany, whose INSERT only runs when `(SELECT COUNT(*) FROM photos WHERE owner_id = ? AND trip_id = ?) < MAX_PHOTOS_PER_TRIP`, inside a transaction. The countByTrip in AttachPhotos is only an early, friendly rejection. Added a repository test that proves a second attach is refused at the cap.
+  - ai_reasoning: Still present: countByTrip then insertMany is unchanged. The UI blocks concurrent changes via `changeRequestId`, so impact is minimal; a count condition in the INSERT would make the limit authoritative.
+- **src/features/photos/presentation/screens/PhotoPreviewScreen.tsx:121** — Preview items are keyed by `${index}-${image.uri}`; removing an item shifts indices and remounts every following row. *(maintainability)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: `StorageWeatherCache.ts` saves forecasts keyed by `location` (the device position rounded to about 1 km) in plain device storage. The sentence is literally true but incomplete. Adding "a rounded position is kept with cached forecasts" would make it accurate. Can be fixed together with the High finding above.
-- **src/features/preferences/presentation/screens/SettingsScreen.tsx:192**: When location access is `granted`, the row shows no action, so users get no path to revoke access from the app. *(ux / consistency)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: An action button only renders for `undetermined | denied` (Allow) and `blocked` (Open Settings). The status text is accurate, but a settings row for a permission normally offers a way to change it either way. Showing "Open Settings" for `granted` as well would cover that.
-- **src/bootstrap/PreferencesGate.tsx:68**: The "Restart Wanderly to finish switching the navigation layout" notice appears even when the user never switched language. *(correctness / copy)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `applyNativeLayoutDirection` returns `restartRequired: I18nManager.isRTL !== rtl`. On a fresh install on an RTL-locale device (e.g. Arabic) with the app language English, native `isRTL` is `true` at launch. The function therefore reports a restart, and Settings shows `settings.layoutRestart` (en.ts:1014) although nothing was switched. Behaviour is otherwise correct: content is LTR immediately and native chrome is fixed after a restart. Consider wording that doesn't imply a user action, or only showing it after a change made in Settings.
-- **src/features/profile/domain/usecases/profileUseCases.ts:65**: An unchanged photo is kept only if it matches `isStoredReference`. Unlike trips (`requested === previous || isStoredReference`), a stored non-reference value is re-imported on every save. *(correctness / consistency)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `StorageLocalProfileRepository` accepts any non-empty string for `photo`. If stored data holds a raw path (corrupt or older data), `useProfileForm` copies it into the form and each save calls `importImage` on it. If that file is gone, every save fails with a storage error until the user removes the photo. Needs corrupt or tampered storage, hence Low. Fix: also keep `photo === previousPhoto`, or reject non-reference photo values when loading.
-- **src/features/profile/presentation/hooks/useProfileForm.ts:18**: The form starts with `displayName: profile.displayName ?? accountName`, so any save (even a bio-only edit) saves the current account name as the local display name for good. *(correctness / design)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: After the first save, a later account-name change from the server (`refreshProfile`) never shows on Profile or in the drawer, because `useProfileIdentity` prefers `profile.displayName`. The field is required (`profileValidation.ts`), so the user can't go back to "use my account name". Confirm this is intended. If not, keep `displayName` null unless the user edited it.
-- **src/features/profile/presentation/screens/EditProfileScreen.tsx:31**: `accountName={identity.name}` passes the local display name when one is saved, not the account name the prop is named after. *(naming / correctness)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `useProfileIdentity` sets `name: profile.displayName ?? displayName(user)`. The saved form result is unaffected, but when the name field is cleared the avatar fallback (`input.displayName || accountName`) shows the saved local name's initials, not the account name. Pass `displayName(identity.user)` instead.
-- **src/features/profile/presentation/hooks/useLocalProfile.ts:17**: When the local profile load fails, Profile and the drawer silently fall back to the account name and photo, and the load isn't retried until the user opens Edit and taps Retry. *(error handling)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: The effect only dispatches while `status === 'idle'`, so a `failed` status stays until an explicit retry. ProfileScreen shows no message for this, while travel stats in the same screen do show an "unavailable" state. Low impact because the fallback data is reasonable, but the failure is invisible.
-- **src/features/profile/presentation/screens/ProfileScreen.tsx:157**: The loading accessibility label is built by string concatenation (`` `${label}: ${t('common.loading')}` ``), unlike the other two states, which use translation templates. *(i18n)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `valueLabel` and `unavailableLabel` go through `t(..., { stat })`, which allows per-locale word order and punctuation (relevant now that Urdu is supported). Add a `profile.stats.loadingLabel` key for consistency.
-- **src/features/profile/data/FileSystemProfilePhotoStore.ts:1**: Near line-for-line duplicate of `FileSystemTripCoverStore.ts` (reference regex, `extensionOf`, import/remove/displayUri). *(maintainability)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: Two copies of the path-validation and file-copy logic can drift apart, for example if one gets a security fix to the reference check and the other doesn't. A shared store parameterized by directory name would remove the duplication.
-- **src/shared/ui/AppIcon.tsx:36**: iOS self-mirroring is assumed to follow `I18nManager.isRTL`. On Fabric, `semanticContentAttribute` follows the Yoga (JS `direction`) layout direction, so `restore` may be double-flipped or left unflipped before the restart. *(rtl)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: `nativeMirrored = Platform.OS === 'ios' && I18nManager.isRTL && IOS_SELF_MIRRORING_ICONS.has(name)`. However, `UIView+ComponentViewProtocol.mm` sets each view's `semanticContentAttribute` from `layoutMetrics.layoutDirection`, which comes from the JS `direction` set at the root, not from the native `I18nManager` flag. If the `SymbolView` image follows that, then in the window between switching language and restarting the `restore` arrow points the wrong way. Steady state after a restart is correct either way. `rtlNativeAlignment.test.tsx` only checks the JS transform, so it encodes the assumption. Verify on an iOS device (switch to Urdu without restarting and look at the restore icon on TripScreen). If it is wrong, don't JS-mirror `IOS_SELF_MIRRORING_ICONS` on iOS. Cosmetic and temporary, hence Low.
-- **src/features/weather/presentation/components/DailyForecastList.tsx:95**: The forecast range bar still positions its fill with physical `left`, so in Urdu the fill doesn't line up with the flipped min/max labels. *(rtl)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: This file is not in the diff, but the diff adds RTL and ARCHITECTURE section 18 says content flips immediately. In RTL the row's min and max labels swap sides, while `left: \`${position.start * 100}%\`` keeps the fill measured from the physical left, so the low end of the bar sits next to the max label. Use `start` instead of `left`.
+  - ai_reasoning: Fixed: rows are now keyed by `image.uri` (PhotoPreviewScreen.tsx:117), so removal no longer remounts siblings.
 
 ## Reviewed files
-- .code-reviews/brainx-review.md (deleted; previous finalized review)
-- README.md
 - app.json
 - docs/ARCHITECTURE.md
-- src/app/(app)/(tabs)/profile/_layout.tsx
-- src/app/(app)/(tabs)/profile/about.tsx
-- src/app/(app)/(tabs)/profile/edit.tsx
-- src/app/(app)/(tabs)/profile/index.tsx
-- src/app/(app)/(tabs)/profile/privacy.tsx
-- src/app/(app)/_layout.tsx
-- src/bootstrap/PreferencesGate.test.tsx
-- src/bootstrap/PreferencesGate.tsx
+- jest.setup.ts
+- package-lock.json
+- package.json
+- src/app/(app)/(tabs)/trips/[tripId]/itinerary/[itemId]/photos.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/[photoId].tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/camera.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/index.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/preview.tsx
+- src/app/(app)/(tabs)/trips/_layout.tsx
 - src/bootstrap/createAppContainer.ts
+- src/bootstrap/databaseMigrations.ts
 - src/core/di/AppDependencies.ts
-- src/core/i18n/LayoutDirectionProvider.test.tsx
-- src/core/i18n/LayoutDirectionProvider.tsx
-- src/core/i18n/createI18n.ts
-- src/core/i18n/languages.test.ts
-- src/core/i18n/languages.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
-- src/core/i18n/locales/locales.test.ts
-- src/core/i18n/locales/ur.ts (key/placeholder parity enforced by locales.test.ts; Urdu wording not reviewed, needs native-speaker review per file header)
-- src/core/money/currencies.ts
+- src/core/i18n/locales/ur.ts
+- src/core/storage/DocumentImageStore.ts
 - src/core/store/store.ts
-- src/core/theme/ThemeProvider.tsx
-- src/core/theme/themes.ts
-- src/core/theme/tokens.test.ts
-- src/core/theme/tokens.ts
-- src/features/auth/presentation/screens/ProfileScreen.tsx (deleted)
-- src/features/budget/presentation/components/CategoryBreakdownChart.tsx
-- src/features/preferences/data/StoragePreferencesRepository.test.ts
-- src/features/preferences/data/StoragePreferencesRepository.ts
-- src/features/preferences/di.ts
-- src/features/preferences/domain/Preferences.ts
-- src/features/preferences/domain/resolvePreferences.test.ts
-- src/features/preferences/domain/resolvePreferences.ts
-- src/features/preferences/domain/usecases/LoadPreferences.test.ts
-- src/features/preferences/domain/usecases/SavePreferences.edge.test.ts
-- src/features/preferences/domain/usecases/SavePreferences.test.ts
-- src/features/preferences/domain/usecases/SavePreferences.ts
-- src/features/preferences/presentation/applyNativeLayoutDirection.test.ts
-- src/features/preferences/presentation/applyNativeLayoutDirection.ts
-- src/features/preferences/presentation/components/CurrencyPreferenceSheet.tsx
-- src/features/preferences/presentation/components/SettingSwitchRow.test.tsx
-- src/features/preferences/presentation/components/SettingSwitchRow.tsx
-- src/features/preferences/presentation/hooks/useLocationPermissionSetting.edge.test.tsx
-- src/features/preferences/presentation/hooks/useLocationPermissionSetting.ts
-- src/features/preferences/presentation/hooks/usePreferenceSettings.ts
-- src/features/preferences/presentation/screens/AboutScreen.tsx
-- src/features/preferences/presentation/screens/PrivacyScreen.tsx
-- src/features/preferences/presentation/screens/SettingsScreen.edge.test.tsx
-- src/features/preferences/presentation/screens/SettingsScreen.test.tsx
-- src/features/preferences/presentation/screens/SettingsScreen.tsx
-- src/features/preferences/presentation/state/preferencesSlice.test.ts
-- src/features/preferences/presentation/state/preferencesSlice.ts
-- src/features/preferences/presentation/state/selectors.ts
-- src/features/profile/data/FileSystemProfilePhotoStore.edge.test.ts
-- src/features/profile/data/FileSystemProfilePhotoStore.ts
-- src/features/profile/data/StorageLocalProfileRepository.edge.test.ts
-- src/features/profile/data/StorageLocalProfileRepository.test.ts
-- src/features/profile/data/StorageLocalProfileRepository.ts
-- src/features/profile/di.ts
-- src/features/profile/domain/LocalProfile.ts
-- src/features/profile/domain/profileValidation.test.ts
-- src/features/profile/domain/profileValidation.ts
-- src/features/profile/domain/repositories.ts
-- src/features/profile/domain/travelStats.test.ts
-- src/features/profile/domain/travelStats.ts
-- src/features/profile/domain/usecases/profileUseCases.test.ts
-- src/features/profile/domain/usecases/profileUseCases.ts
-- src/features/profile/presentation/hooks/useLocalProfile.ts
-- src/features/profile/presentation/hooks/useProfileForm.ts
-- src/features/profile/presentation/hooks/useProfileIdentity.ts
-- src/features/profile/presentation/hooks/useTravelStats.ts
-- src/features/profile/presentation/screens/EditProfileScreen.edge.test.tsx
-- src/features/profile/presentation/screens/EditProfileScreen.tsx
-- src/features/profile/presentation/screens/ProfileScreen.tsx
-- src/features/profile/presentation/screens/profileFlows.test.tsx
-- src/features/profile/presentation/state/profileSlice.edge.test.ts
-- src/features/profile/presentation/state/profileSlice.ts
-- src/features/profile/presentation/state/selectors.ts
-- src/features/shell/presentation/components/AppDrawerContent.tsx
-- src/features/trips/data/ExpoImagePickerService.ts
-- src/features/trips/domain/money.ts
-- src/features/trips/domain/repositories.ts
-- src/features/trips/presentation/hooks/useTripForm.currency.test.tsx
-- src/features/trips/presentation/hooks/useTripForm.ts
+- src/features/budget/data/LocalExpenseRepository.test.ts
+- src/features/itinerary/presentation/screens/ActivityDetailsScreen.tsx
+- src/features/photos/data/ExpoImageProcessor.ts
+- src/features/photos/data/ExpoMediaPermissionService.test.ts
+- src/features/photos/data/ExpoMediaPermissionService.ts
+- src/features/photos/data/ExpoPhotoLibraryPicker.test.ts
+- src/features/photos/data/ExpoPhotoLibraryPicker.ts
+- src/features/photos/data/FileSystemPhotoStore.test.ts
+- src/features/photos/data/FileSystemPhotoStore.ts
+- src/features/photos/data/LocalPhotoRepository.test.ts
+- src/features/photos/data/LocalPhotoRepository.ts
+- src/features/photos/data/photosMigrations.ts
+- src/features/photos/di.ts
+- src/features/photos/domain/Photo.ts
+- src/features/photos/domain/imageValidation.edge.test.ts
+- src/features/photos/domain/imageValidation.test.ts
+- src/features/photos/domain/imageValidation.ts
+- src/features/photos/domain/repositories.ts
+- src/features/photos/domain/usecases/photoUseCases.edge.test.ts
+- src/features/photos/domain/usecases/photoUseCases.test.ts
+- src/features/photos/domain/usecases/photoUseCases.ts
+- src/features/photos/presentation/components/ActivityPhotosSection.tsx
+- src/features/photos/presentation/components/AddPhotoMenu.tsx
+- src/features/photos/presentation/components/CameraCanvas.tsx
+- src/features/photos/presentation/components/MediaPermissionView.tsx
+- src/features/photos/presentation/components/PhotoGrid.tsx
+- src/features/photos/presentation/components/PhotoTile.tsx
+- src/features/photos/presentation/components/PhotosEntryCard.tsx
+- src/features/photos/presentation/components/PhotosStateView.tsx
+- src/features/photos/presentation/format.ts
+- src/features/photos/presentation/hooks/useAddPhotos.ts
+- src/features/photos/presentation/hooks/useMediaPermission.test.tsx
+- src/features/photos/presentation/hooks/useMediaPermission.ts
+- src/features/photos/presentation/hooks/usePhotos.ts
+- src/features/photos/presentation/screens/CameraScreen.tsx
+- src/features/photos/presentation/screens/PhotoGalleryScreen.tsx
+- src/features/photos/presentation/screens/PhotoPreviewScreen.tsx
+- src/features/photos/presentation/screens/PhotoViewerScreen.tsx
+- src/features/photos/presentation/screens/photoFlows.test.tsx
+- src/features/photos/presentation/state/photosSlice.test.ts
+- src/features/photos/presentation/state/photosSlice.ts
+- src/features/photos/presentation/state/selectors.ts
+- src/features/trips/di.ts
+- src/features/trips/domain/usecases/SetTripCover.test.ts
+- src/features/trips/domain/usecases/tripUseCases.ts
+- src/features/trips/presentation/screens/TripScreen.tsx
+- src/features/trips/presentation/state/tripsSlice.ts
 - src/shared/navigation/routes.ts
-- src/shared/ui/AppBottomSheet.tsx
-- src/shared/ui/AppIcon.tsx
-- src/shared/ui/AppInput.tsx
-- src/shared/ui/AppText.tsx
-- src/shared/ui/ListGroup.tsx
-- src/shared/ui/Screen.tsx
-- src/shared/ui/StateViews.test.tsx
 - src/shared/ui/icons.ts
-- src/shared/ui/index.ts
-- src/shared/ui/rtl.test.tsx
-- src/shared/ui/rtlNativeAlignment.test.tsx
-- src/testing/layoutDirection.ts
-- src/testing/profileFixtures.ts
-- src/testing/renderWithProviders.tsx
+- src/testing/photoFixtures.ts
 - src/testing/testDependencies.ts
-- src/testing/tripFixtures.ts
+- package-lock.json (dependency changes only)

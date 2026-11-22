@@ -27,6 +27,8 @@ import {
   type SaveTripOutcome,
   SetTripCancelled,
   type SetTripCancelledInput,
+  SetTripCover,
+  type SetTripCoverInput,
   UpdateTrip,
   type UpdateTripInput,
 } from './domain/usecases/tripUseCases';
@@ -42,6 +44,7 @@ export interface TripsDependencies {
   readonly updateTrip: UseCase<UpdateTripInput, SaveTripOutcome>;
   readonly deleteTrip: UseCase<string, Result<void, AppError>>;
   readonly setTripCancelled: UseCase<SetTripCancelledInput, SaveTripOutcome>;
+  readonly setTripCover: UseCase<SetTripCoverInput, SaveTripOutcome>;
   readonly pickCoverImage: UseCase<void, Result<string | null, AppError>>;
 }
 
@@ -62,5 +65,6 @@ export const tripsFactories: Factories<
   updateTrip: (c) => new UpdateTrip(c.tripRepository, c.tripOwnerProvider, c.tripCoverStore, c.clock),
   deleteTrip: (c) => new DeleteTrip(c.tripRepository, c.tripOwnerProvider, c.tripCoverStore),
   setTripCancelled: (c) => new SetTripCancelled(c.tripRepository, c.tripOwnerProvider, c.clock),
+  setTripCover: (c) => new SetTripCover(c.tripRepository, c.tripOwnerProvider, c.tripCoverStore, c.clock),
   pickCoverImage: (c) => new PickCoverImage(c.imagePickerService),
 };

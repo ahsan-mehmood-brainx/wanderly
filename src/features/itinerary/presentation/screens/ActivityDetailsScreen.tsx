@@ -9,6 +9,7 @@ import { getErrorMessageKey } from '@/core/errors/errorMessages';
 import { useAppDispatch } from '@/core/store/hooks';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { buildDirectionsUrls } from '@/features/map/domain/directions';
+import { ActivityPhotosSection } from '@/features/photos/presentation/components/ActivityPhotosSection';
 import { ConfirmSheet } from '@/features/trips/presentation/components/ConfirmSheet';
 import { routes } from '@/shared/navigation/routes';
 import { openExternalUrl } from '@/shared/navigation/openExternalUrl';
@@ -198,6 +199,8 @@ function ActivityDetails({ activity, dayNumber, dayActivities, onDeletingChange 
           </View>
         </AppCard>
       </View>
+
+      <ActivityPhotosSection tripId={activity.tripId} activityId={activity.id} />
 
       {latitude !== null && longitude !== null ? (
         <View style={{ gap: spacing.sm }}>

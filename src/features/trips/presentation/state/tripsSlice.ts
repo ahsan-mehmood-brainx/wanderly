@@ -5,7 +5,7 @@ import { createAppAsyncThunk } from '@/core/store/hooks';
 import { sessionExpired, signIn, signOut } from '@/features/auth/presentation/state/authSlice';
 
 import { type Trip, type TripInput } from '../../domain/Trip';
-import { type SaveTripOutcome, type UpdateTripInput } from '../../domain/usecases/tripUseCases';
+import { type SaveTripOutcome, type SetTripCoverInput, type UpdateTripInput } from '../../domain/usecases/tripUseCases';
 import { type TripValidationErrors } from '../../domain/tripValidation';
 
 /** Serialisable result of a change (actions must not carry `AppError` instances). */
@@ -84,6 +84,13 @@ export const setTripCancelled = createAppAsyncThunk(
   notSaving,
 );
 
+/** Waits for other trip saves too, so a cover change and a form edit can't overwrite each other. */
+export const setTripCover = createAppAsyncThunk(
+  'trips/setCover',
+  async (input: SetTripCoverInput, { extra }) => toChangeOutcome(await extra.setTripCover.execute(input)),
+  notSaving,
+);
+
 export const deleteTrip = createAppAsyncThunk(
   'trips/delete',
   async (id: string, { extra }): Promise<TripDeleteOutcome> => {
@@ -127,11 +134,11 @@ const tripsSlice = createSlice({
         state.changeRequestId = null;
         if (payload.status === 'deleted') tripsAdapter.removeOne(state, payload.id);
       })
-      .addMatcher(isPending(createTrip, updateTrip, setTripCancelled, deleteTrip), (state, { meta }) => {
+      .addMatcher(isPending(createTrip, updateTrip, setTripCancelled, setTripCover, deleteTrip), (state, { meta }) => {
         state.changeRequestId = meta.requestId;
       })
       .addMatcher(
-        isAnyOf(createTrip.fulfilled, updateTrip.fulfilled, setTripCancelled.fulfilled),
+        isAnyOf(createTrip.fulfilled, updateTrip.fulfilled, setTripCancelled.fulfilled, setTripCover.fulfilled),
         (state, { payload, meta }) => {
           if (state.changeRequestId !== meta.requestId) return;
           state.changeRequestId = null;
@@ -139,7 +146,7 @@ const tripsSlice = createSlice({
         },
       )
       // A dispatch refused by `condition` sends no action, so this is always the change that was running.
-      .addMatcher(isRejected(createTrip, updateTrip, setTripCancelled, deleteTrip), (state, { meta }) => {
+      .addMatcher(isRejected(createTrip, updateTrip, setTripCancelled, setTripCover, deleteTrip), (state, { meta }) => {
         if (state.changeRequestId === meta.requestId) state.changeRequestId = null;
       })
       // Sign-in is included so nothing can carry over even if an earlier session ended some other way.

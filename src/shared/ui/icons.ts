@@ -26,6 +26,8 @@ export const icons = {
   beach: icon('beach.umbrella', 'beach_access'),
   bookmark: icon('bookmark', 'bookmark'),
   calendar: icon('calendar', 'calendar_today'),
+  camera: icon('camera', 'photo_camera'),
+  flipCamera: icon('arrow.triangle.2.circlepath.camera', 'flip_camera_ios'),
   car: icon('car', 'directions_car'),
   check: icon('checkmark', 'check'),
   checkCircle: icon('checkmark.circle.fill', 'check_circle'),

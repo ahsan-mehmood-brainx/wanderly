@@ -10,6 +10,7 @@ import { itineraryReducer } from '@/features/itinerary/presentation/state/itiner
 import { mapApi } from '@/features/map/presentation/state/mapApi';
 import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
+import { photosReducer } from '@/features/photos/presentation/state/photosSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
 import { profileReducer } from '@/features/profile/presentation/state/profileSlice';
 import { tripsReducer } from '@/features/trips/presentation/state/tripsSlice';
@@ -29,6 +30,7 @@ const rootReducer = combineReducers({
   favorites: favoritesReducer,
   budget: budgetReducer,
   profile: profileReducer,
+  photos: photosReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;

@@ -278,7 +278,7 @@ describe('LocalExpenseRepository', () => {
     });
 
     it('is migration 4, after favorites', () => {
-      expect(APP_MIGRATIONS.map(({ version }) => version)).toEqual([1, 2, 3, 4]);
+      expect(APP_MIGRATIONS.map(({ version }) => version).slice(0, 4)).toEqual([1, 2, 3, 4]);
       expect(APP_MIGRATIONS[3]?.name).toMatch(/expenses/);
     });
 
@@ -315,7 +315,9 @@ describe('LocalExpenseRepository', () => {
       const repository = new LocalExpenseRepository(upgraded, logger);
       expect((await repository.insert(TRIP_OWNER, expense())).ok).toBe(true);
 
-      await expect(upgraded.getFirst('PRAGMA user_version')).resolves.toEqual({ user_version: 4 });
+      await expect(upgraded.getFirst('PRAGMA user_version')).resolves.toEqual({
+        user_version: APP_MIGRATIONS[APP_MIGRATIONS.length - 1]?.version,
+      });
       expect(unwrap(await new LocalTripRepository(upgraded, logger).list(TRIP_OWNER))).toEqual([BUDGET_TRIP]);
       expect(unwrap(await new LocalActivityRepository(upgraded, logger).listByTrip(TRIP_OWNER, 'trip-1'))).toHaveLength(
         1,

@@ -54,10 +54,19 @@
       ],
       "expo-sqlite",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Wanderly uses the camera so you can take photos for your trips and activities. Photos stay on this device.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
         "expo-image-picker",
         {
-          "photosPermission": "Wanderly lets you choose a photo from your library as a trip's cover image or your profile photo. The photo stays on this device.",
-          "cameraPermission": false,
+          "photosPermission": "Wanderly lets you choose photos from your library for your trips and activities, a trip's cover image or your profile photo. Photos are copied to this device only.",
+          "cameraPermission": "Wanderly uses the camera so you can take photos for your trips and activities. Photos stay on this device.",
           "microphonePermission": false
         }
       ],

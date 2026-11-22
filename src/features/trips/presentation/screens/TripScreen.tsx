@@ -11,6 +11,7 @@ import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { BudgetEntryCard } from '@/features/budget/presentation/components/BudgetEntryCard';
 import { DestinationImage } from '@/features/discover/presentation/components/DestinationImage';
 import { ItineraryEntryCard } from '@/features/itinerary/presentation/components/ItineraryEntryCard';
+import { PhotosEntryCard } from '@/features/photos/presentation/components/PhotosEntryCard';
 import { DeviceWeatherCard } from '@/features/weather/presentation/components/DeviceWeather';
 import { useDeviceWeather } from '@/features/weather/presentation/hooks/useDeviceWeather';
 import { routes } from '@/shared/navigation/routes';
@@ -186,6 +187,7 @@ function TripDetails({ trip, today, onDeletingChange }: TripDetailsProps) {
 
       <ItineraryEntryCard tripId={trip.id} />
       <BudgetEntryCard tripId={trip.id} />
+      <PhotosEntryCard tripId={trip.id} />
 
       {isCustomDestination(trip.destinationId) ? null : (
         <AppButton

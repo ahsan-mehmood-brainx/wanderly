@@ -5,6 +5,7 @@ import { type FavoritesDependencies } from '@/features/favorites/di';
 import { type ItineraryDependencies } from '@/features/itinerary/di';
 import { type MapDependencies } from '@/features/map/di';
 import { type OnboardingDependencies } from '@/features/onboarding/di';
+import { type PhotosDependencies } from '@/features/photos/di';
 import { type PreferencesDependencies } from '@/features/preferences/di';
 import { type ProfileDependencies } from '@/features/profile/di';
 import { type TripsDependencies } from '@/features/trips/di';
@@ -33,4 +34,5 @@ export type AppDependencies = CoreDependencies &
   ItineraryDependencies &
   FavoritesDependencies &
   BudgetDependencies &
-  ProfileDependencies;
+  ProfileDependencies &
+  PhotosDependencies;

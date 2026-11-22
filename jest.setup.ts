@@ -51,3 +51,45 @@ jest.mock('react-native-maps', () => {
     PROVIDER_GOOGLE: 'google',
   };
 });
+
+// expo-camera needs the native camera. CameraView becomes a plain View that keeps every prop (testID,
+// onCameraReady, onMountError) and reports ready once mounted. Its ref's `takePictureAsync` is the shared
+// `mockCamera.takePictureAsync`, so a test controls captures via `jest.requireMock('expo-camera').mockCamera`.
+jest.mock('expo-camera', () => {
+  const React: typeof import('react') = require('react');
+  const { View }: typeof import('react-native') = require('react-native');
+  const granted = { status: 'granted', granted: true, canAskAgain: true, expires: 'never' };
+  const mockCamera = {
+    takePictureAsync: jest.fn(async () => ({
+      uri: 'file:///cache/Camera/capture.jpg',
+      width: 4032,
+      height: 3024,
+      format: 'jpg',
+      exif: { DateTimeOriginal: '2027:06:15 09:30:00' },
+    })),
+  };
+  const CameraView = React.forwardRef<unknown, MockProps>(function MockCameraView(props, ref) {
+    React.useImperativeHandle(ref, () => ({
+      takePictureAsync: (...args: unknown[]) => mockCamera.takePictureAsync(...(args as [])),
+      pausePreview: jest.fn(),
+      resumePreview: jest.fn(),
+    }));
+    const { onCameraReady } = props as { onCameraReady?: () => void };
+    React.useEffect(() => {
+      onCameraReady?.();
+    }, [onCameraReady]);
+    return React.createElement(View, props);
+  });
+  return {
+    __esModule: true,
+    CameraView,
+    mockCamera,
+    getCameraPermissionsAsync: jest.fn(async () => granted),
+    requestCameraPermissionsAsync: jest.fn(async () => granted),
+    useCameraPermissions: jest.fn(() => [granted, jest.fn(async () => granted), jest.fn(async () => granted)]),
+    Camera: {
+      getCameraPermissionsAsync: jest.fn(async () => granted),
+      requestCameraPermissionsAsync: jest.fn(async () => granted),
+    },
+  };
+});

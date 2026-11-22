@@ -13,6 +13,7 @@ import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
+import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
 import { profileFactories } from '@/features/profile/di';
@@ -57,6 +58,7 @@ export function createAppContainer(): AppContainer {
     ...favoritesFactories,
     ...budgetFactories,
     ...profileFactories,
+    ...photosFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

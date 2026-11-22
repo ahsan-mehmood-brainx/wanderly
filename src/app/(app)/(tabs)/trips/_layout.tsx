@@ -34,6 +34,14 @@ export default function TripsStackLayout() {
       <Stack.Screen name="[tripId]/itinerary/new" options={{ title: t('itinerary.newActivity') }} />
       <Stack.Screen name="[tripId]/itinerary/[itemId]" options={{ title: t('itinerary.activityTitle') }} />
       <Stack.Screen name="[tripId]/itinerary/[itemId]/edit" options={{ title: t('itinerary.editActivity') }} />
+      <Stack.Screen name="[tripId]/itinerary/[itemId]/photos" options={{ title: t('photos.activityTitle') }} />
+      <Stack.Screen name="[tripId]/photos/index" options={{ title: t('photos.tripTitle') }} />
+      <Stack.Screen
+        name="[tripId]/photos/camera"
+        options={{ headerShown: false, presentation: 'fullScreenModal', title: t('photos.camera.title') }}
+      />
+      <Stack.Screen name="[tripId]/photos/preview" options={{ title: t('photos.preview.title') }} />
+      <Stack.Screen name="[tripId]/photos/[photoId]" options={{ title: t('photos.viewer.title') }} />
     </Stack>
   );
 }

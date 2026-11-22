@@ -509,7 +509,7 @@ presentation  TripsScreen (My Trips) · TripListScreen (Upcoming, Completed) · 
               tripsSlice (mirror of the table, one change at a time) · selectors (status as of today)
 domain        Trip / StoredTrip / TripInput · localDate · tripStatus · tripValidation · money
               TripRepository · TripOwnerProvider · TripCoverStore · ImagePickerService
-              GetTrips · GetTrip · CreateTrip · UpdateTrip · DeleteTrip · SetTripCancelled · PickCoverImage
+              GetTrips · GetTrip · CreateTrip · UpdateTrip · DeleteTrip · SetTripCancelled · SetTripCover · PickCoverImage
 data          LocalTripRepository (SqlDatabase) · SessionTripOwnerProvider · tripMigrations
               FileSystemTripCoverStore · ExpoImagePickerService
 core          SqlDatabase · SqliteDatabase · migrate · expoSqliteDriver
@@ -521,16 +521,17 @@ core          SqlDatabase · SqliteDatabase · migrate · expoSqliteDriver
 
 ### Rules
 
-| Topic        | Rule                                                                                                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dates        | `YYYY-MM-DD` calendar dates, so a trip doesn't move when the time zone changes. Both the first and last day belong to the trip.                                                                         |
-| Status       | Not stored. `cancelled` if `cancelledAt` is set; otherwise `upcoming` before the start, `ongoing` through the last day, then `completed`. Re-derived for today in selectors, so trips move at midnight. |
-| Overlaps     | Trips that aren't cancelled can't overlap: `a.start < b.end && b.start < a.end`. One trip may start the day another ends. Saving or restoring into taken dates is refused and names the other trip.     |
-| Budget       | Required, positive, at most 10,000,000 in major units and the currency's decimals. Stored as integer minor units. Thousands separators are rejected, not guessed.                                       |
-| Required     | Title (max 80), destination, both dates (end not before start, max 366 days), budget, currency. Description and cover are optional.                                                                     |
-| Destination  | Discover search when online. Offline: recently viewed and curated places, or any typed name (`custom:` id, which has no destination page).                                                              |
-| Cover photo  | Copied to `documents/trip-covers` when the trip is saved. The database keeps the relative path, because the absolute one changes on iOS updates. Not offered on web.                                    |
-| Unsaved form | Leaving with changes asks first.                                                                                                                                                                        |
+| Topic        | Rule                                                                                                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dates        | `YYYY-MM-DD` calendar dates, so a trip doesn't move when the time zone changes. Both the first and last day belong to the trip.                                                                                                                                  |
+| Status       | Not stored. `cancelled` if `cancelledAt` is set; otherwise `upcoming` before the start, `ongoing` through the last day, then `completed`. Re-derived for today in selectors, so trips move at midnight.                                                          |
+| Overlaps     | Trips that aren't cancelled can't overlap: `a.start < b.end && b.start < a.end`. One trip may start the day another ends. Saving or restoring into taken dates is refused and names the other trip.                                                              |
+| Budget       | Required, positive, at most 10,000,000 in major units and the currency's decimals. Stored as integer minor units. Thousands separators are rejected, not guessed.                                                                                                |
+| Required     | Title (max 80), destination, both dates (end not before start, max 366 days), budget, currency. Description and cover are optional.                                                                                                                              |
+| Destination  | Discover search when online. Offline: recently viewed and curated places, or any typed name (`custom:` id, which has no destination page).                                                                                                                       |
+| Cover photo  | Copied to `documents/trip-covers` when the trip is saved. The database keeps the relative path, because the absolute one changes on iOS updates. Not offered on web.                                                                                             |
+| Unsaved form | Leaving with changes asks first.                                                                                                                                                                                                                                 |
+| Set as cover | `SetTripCover` (a gallery photo's Set as cover) copies the image in through `TripCoverStore`, saves only the cover, and deletes the old cover file after the save. It skips form validation and the overlap check, and waits for other trip saves (`notSaving`). |
 
 ### Accounts
 
@@ -780,3 +781,70 @@ Urdu typography comes from `createTypography({ rtlScript: true })`. It drops let
 ### Testing
 
 `testing/profileFixtures.ts` provides `localProfile`, `localProfileInput` and `FakeProfilePhotoStore`. `testing/layoutDirection.ts` finds the `direction` that applies to an element. Unless `initialLanguage` is given, `renderWithProviders` starts i18n in the device language, as the app does. `locales.test.ts` checks that `es` and `ur` have every English key and placeholder. The Urdu translations are machine-written and need review by a native speaker before release.
+
+## 19. Photos
+
+`features/photos/` lets the traveller attach photos to a trip or to one of its itinerary activities, from an in-app camera (expo-camera) or the photo library (expo-image-picker, up to 10 at once). Every image is checked, resized and re-encoded (expo-image-manipulator), copied into app storage and referenced from SQLite. Nothing is uploaded and no backend is involved. `TripScreen` links to the trip gallery through `PhotosEntryCard`, and `ActivityDetailsScreen` shows the activity's latest photos in `ActivityPhotosSection`.
+
+### Layers
+
+```
+presentation  PhotoGalleryScreen (/trips/[tripId]/photos and …/itinerary/[itemId]/photos) · CameraScreen (…/photos/camera)
+              PhotoPreviewScreen (…/photos/preview) · PhotoViewerScreen (…/photos/[photoId], optional ?activityId)
+              CameraCanvas (the only expo-camera import) · PhotoGrid · PhotoTile · AddPhotoMenu · MediaPermissionView
+              PhotosEntryCard · ActivityPhotosSection · PhotosStateView · format
+              useMediaPermission · usePhotoGallery (useTripPhotos, useActivityPhotos, usePhoto) · useAddPhotos
+              photosSlice (metadata mirror, one change at a time, pending selection) · selectors
+domain        Photo · PickedImage · imageValidation (validatePickedImage, fitWithin, parseExifDateTime, limits)
+              PhotoRepository · PhotoFileStore · ImageProcessor · MediaPermissionService · PhotoLibraryPicker
+              GetTripPhotos · GetActivityPhotos · AttachPhotos · DeletePhoto · PrunePhotoFiles
+              GetMediaPermission · RequestMediaPermission · PickLibraryImages
+data          LocalPhotoRepository (SqlDatabase) · photosMigrations (version 5)
+              FileSystemPhotoStore (trip-photos/) · UnsupportedPhotoStore (web) · ExpoImageProcessor
+              ExpoMediaPermissionService · ExpoPhotoLibraryPicker
+```
+
+### Database and files
+
+Migration 5 creates `photos`: owner-scoped, `trip_id` cascading from `trips`, `activity_id` (`NULL` for a photo of the trip itself) cascading from `activities`, a unique relative `reference`, positive `width`/`height`/`file_size`, `mime_type = 'image/jpeg'` and `source IN ('camera', 'library')`. Inserts check that the trip, and the activity within that trip, belong to the same account. Rows hold metadata only; the images are files in `documents/trip-photos/`, written through `core/storage/DocumentImageStore` like trip covers and profile photos, so references stay relative and can't point outside the folder. Rows with corrupt metadata are skipped with a warning.
+
+| Step     | Rule                                                                                                                                                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validate | JPEG, PNG, WebP, HEIC or HEIF by MIME type, or by the jpg/jpeg/png/webp/heic/heif extension when the type is missing. At most 50 MB and positive whole-pixel dimensions. Each rejected image is named in Preview.          |
+| Limits   | 10 images per library selection, 200 photos per trip (the rest are rejected as `limitReached`).                                                                                                                            |
+| Process  | One image at a time: resized to a 2048 px longest edge (never enlarged) and saved as JPEG at quality 0.8, then copied into `trip-photos/` and the temporary output deleted. `taken_at` comes from EXIF `DateTimeOriginal`. |
+| Save     | Every row of one attach is inserted in one transaction. If processing, copying or the insert fails, every copied file is removed and nothing is saved.                                                                     |
+| Delete   | The row first, then the file (best effort). A trip or activity delete cascades the rows; `PrunePhotoFiles` (once per session) deletes files no row of any account references once they are over an hour old.               |
+| Missing  | A row whose file is gone or whose reference is invalid shows "Photo unavailable" in the grid and viewer, and can still be deleted.                                                                                         |
+| Redux    | `photosSlice` keeps metadata and relative references only. Picked or captured images wait in `pending` as temporary URIs until Attach; they aren't put in route params, so a link can't inject a file URI.                 |
+
+### Permissions
+
+| State          | Camera                                                 | Library                                       |
+| -------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `undetermined` | Explanation with Allow; the OS is asked only on Allow. | Same.                                         |
+| `denied`       | Explanation with Allow again (the OS can still ask).   | Same.                                         |
+| `blocked`      | "Access is turned off" with Open Settings.             | Same.                                         |
+| `limited`      | —                                                      | iOS selected-photos access counts as allowed. |
+
+`useMediaPermission` reads the permission again when the app returns to the foreground and sends one request however often Allow is tapped. The camera screen gates itself, so a direct link can't open the camera without permission, and `PickLibraryImages` refuses to open the picker without access. The Add photo choices show in place rather than in a modal sheet, because on iOS the system picker can't be presented while a modal is still dismissing.
+
+### Edge cases
+
+| Case                                        | Behaviour                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Double tap on Attach                        | The thunk `condition` allows one change at a time, and Preview ignores a second tap.                          |
+| Shutter tapped while the camera starts      | The picture is taken as soon as the camera is ready.                                                          |
+| Camera fails to start or no camera          | "Camera isn't available" with Back.                                                                           |
+| Preview opened without a selection          | "Nothing to preview" with Back.                                                                               |
+| Delete fails                                | The confirm sheet closes, the storage error shows and the photo stays.                                        |
+| Set as cover, then delete the gallery photo | The cover is a separate copy in `trip-covers/`, so it stays.                                                  |
+| Deleted trip or activity, another account's | "Trip not found", "Activity not found" or "Photo not found".                                                  |
+| Web                                         | `UnsupportedPhotoStore`: the galleries say photos are available in the mobile app and offer no Add or camera. |
+| Sign-out, expiry, sign-in                   | `photosSlice` resets and ignores results from requests started before.                                        |
+
+`app.json` configures the expo-camera plugin (camera usage text, no microphone, no barcode scanner) and gives expo-image-picker the same camera text, so the two plugins agree on `NSCameraUsageDescription`. Both packages need a new development build; Expo Go builds without them crash on the camera screen.
+
+### Testing
+
+`testing/photoFixtures.ts` has `photo`, `pickedImage`, `PHOTOS_TRIP`, `PHOTO_ACTIVITY`, `seededPhotoDatabase` (real in-memory SQLite), `FakePhotoFileStore` (`missing`, `failImportAt`), `FakeImageProcessor`, `FakeMediaPermissionService` and `FakePhotoLibraryPicker`. `jest.setup.ts` replaces expo-camera's `CameraView` with a View whose ref exposes `mockCamera.takePictureAsync`. Validation, use cases, repository, file store, permission mapping, picker, slice and `useMediaPermission` have unit tests; `photoFlows.test.tsx` drives the routes with `renderRouter`. The native camera, picker and file handling need on-device testing before release.

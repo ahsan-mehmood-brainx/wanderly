@@ -266,6 +266,50 @@ export class SetTripCancelled implements UseCase<SetTripCancelledInput, SaveTrip
   }
 }
 
+export interface SetTripCoverInput {
+  readonly id: string;
+  /** An image to copy in as the cover (e.g. a gallery photo's display URI); `null` clears the cover. */
+  readonly sourceUri: string | null;
+}
+
+/**
+ * Changes only the trip's cover photo: copies the image into cover storage, saves
+ * the trip, and removes the previous cover file once the save succeeded. Skips the
+ * form validation and overlap checks, since nothing else changes.
+ */
+export class SetTripCover implements UseCase<SetTripCoverInput, SaveTripOutcome> {
+  constructor(
+    private readonly repository: TripRepository,
+    private readonly owners: TripOwnerProvider,
+    private readonly covers: TripCoverStore,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute({ id, sourceUri }: SetTripCoverInput): Promise<SaveTripOutcome> {
+    const owner = requireOwner(this.owners);
+    if (!owner.ok) return { status: 'failed', error: owner.error };
+    const ownerId = owner.value;
+
+    const existing = await this.repository.findById(ownerId, id);
+    if (!existing.ok) return { status: 'failed', error: existing.error };
+    if (!existing.value) return { status: 'failed', error: new AppError('notFound', `Trip ${id} not found`) };
+    const previous = existing.value;
+
+    const cover = await prepareCover(this.covers, sourceUri, previous.coverImage);
+    if (!cover.ok) return { status: 'failed', error: cover.error };
+
+    const now = this.clock.now();
+    const trip: StoredTrip = { ...previous, coverImage: cover.value.reference, updatedAt: now };
+    const saved = await this.repository.update(ownerId, trip);
+    if (!saved.ok) {
+      if (cover.value.imported) await this.covers.remove(cover.value.imported);
+      return { status: 'failed', error: saved.error };
+    }
+    if (previous.coverImage && previous.coverImage !== trip.coverImage) await this.covers.remove(previous.coverImage);
+    return { status: 'saved', trip: withStatus(trip, localDateAt(now)) };
+  }
+}
+
 function fromDraft(draft: TripDraft, coverImage: string | null) {
   return {
     title: draft.title,

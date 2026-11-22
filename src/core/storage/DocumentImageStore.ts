@@ -42,10 +42,10 @@ export class DocumentImageStore implements ImageStore {
    * @param description What the images are, for logs and errors (e.g. "cover photo").
    */
   constructor(
-    private readonly directory: string,
+    protected readonly directory: string,
     private readonly description: string,
     private readonly idGenerator: IdGenerator,
-    private readonly logger: Logger,
+    protected readonly logger: Logger,
   ) {
     if (!DIRECTORY_NAME.test(directory)) throw new Error(`Invalid image directory name: ${directory}`);
     this.reference = new RegExp(`^${directory}/([A-Za-z0-9_-]+\\.[a-z0-9]+)$`);
@@ -82,7 +82,7 @@ export class DocumentImageStore implements ImageStore {
   }
 
   /** The pattern also keeps a tampered reference from pointing outside the store's folder. */
-  private fileFor(reference: string): File | null {
+  protected fileFor(reference: string): File | null {
     const name = this.reference.exec(reference)?.[1];
     return name ? new File(Paths.document, this.directory, name) : null;
   }
