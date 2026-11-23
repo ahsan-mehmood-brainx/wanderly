@@ -1036,7 +1036,12 @@ export const ur: TranslationResources = {
       title: 'اطلاعات',
       tripReminders: 'سفر کی یاد دہانیاں',
       budgetAlerts: 'بجٹ کے انتباہات',
-      notSentYet: 'Wanderly ابھی اطلاعات نہیں بھیجتا۔ آپ کی پسند محفوظ رہے گی تاکہ بعد میں کام آئے۔',
+      hint: 'یاد دہانیاں اسی ڈیوائس پر طے ہوتی ہیں۔ صحیح وقت آپ کا فون طے کرتا ہے، اس لیے یہ کچھ دیر سے بھی آ سکتی ہیں۔',
+      webHint: 'یاد دہانیاں اور انتباہات iPhone اور Android کے لیے Wanderly ایپ میں کام کرتے ہیں۔',
+      off: 'Wanderly کی اطلاعات بند ہیں',
+      allow: 'اجازت دیں',
+      openSettings: 'سیٹنگز کھولیں',
+      reminderTimes: 'یاد دہانی کے اوقات',
     },
     location: {
       title: 'مقام',
@@ -1067,6 +1072,51 @@ export const ur: TranslationResources = {
       title: 'آف لائن',
       row: 'آف لائن اور ڈیٹا',
       hint: 'دیکھیں کہ کنکشن کے بغیر کیا کام کرتا ہے اور محفوظ معلومات کا انتظام کریں۔',
+    },
+  },
+  notifications: {
+    settings: {
+      title: 'یاد دہانی کے اوقات',
+      intro:
+        'سفر کی یاد دہانیاں آپ کی ڈیوائس پر {{time}} پر آتی ہیں۔ سیٹنگز میں سفر کی یاد دہانیاں یا بجٹ کے انتباہات آن کریں۔',
+      upcomingTrip: 'آنے والے سفر کی یاد دہانی',
+      tripStart: 'سفر شروع ہونے کی یاد دہانی',
+      tripStartHint: 'پہلے دن {{time}} پر',
+      activity: 'سرگرمی کی یاد دہانی',
+      budget: 'بجٹ انتباہ کی حد',
+      off: 'بند',
+      daysBefore_one: '{{count}} دن پہلے',
+      daysBefore_other: '{{count}} دن پہلے',
+      minutesBefore: '{{count}} منٹ پہلے',
+      hoursBefore_one: '{{count}} گھنٹہ پہلے',
+      hoursBefore_other: '{{count}} گھنٹے پہلے',
+      percentSpent: '{{percent}}% خرچ',
+      loadError: 'آپ کی یاد دہانی کے اوقات لوڈ نہیں ہو سکے۔ ڈیفالٹ اوقات دکھائے جا رہے ہیں۔',
+      saveError: 'ہم یہ تبدیلی محفوظ نہیں کر سکے۔ دوبارہ کوشش کریں۔',
+    },
+    channels: {
+      reminders: 'سفر کی یاد دہانیاں',
+      budget: 'بجٹ کے انتباہات',
+    },
+    content: {
+      tripUpcoming: {
+        title: 'سفر قریب ہے',
+        body_one: '{{destination}} کا سفر {{tripTitle}} کل شروع ہو رہا ہے۔',
+        body_other: '{{destination}} کا سفر {{tripTitle}} {{count}} دن میں شروع ہو رہا ہے۔',
+      },
+      tripStart: {
+        title: 'آپ کا سفر آج شروع ہو رہا ہے',
+        body: '{{destination}} کا سفر {{tripTitle}} آج شروع ہو رہا ہے۔',
+      },
+      activity: {
+        title: 'جلد آ رہا ہے: {{activityTitle}}',
+        body: '{{time}} بجے شروع · {{tripTitle}}',
+        bodyTomorrow: 'کل {{time}} بجے · {{tripTitle}}',
+      },
+      budget: {
+        title: 'بجٹ کا انتباہ',
+        body: '{{tripTitle}}: بجٹ کا {{percent}}% خرچ ہو چکا ہے۔',
+      },
     },
   },
   privacy: {

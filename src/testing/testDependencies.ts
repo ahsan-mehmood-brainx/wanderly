@@ -13,6 +13,7 @@ import { discoverFactories } from '@/features/discover/di';
 import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
+import { notificationsFactories } from '@/features/notifications/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
@@ -28,6 +29,13 @@ import { FakeLocationService } from './FakeLocationService';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
 import { nodeSqliteDriver } from './nodeSqliteDriver';
+import {
+  FakeBackgroundRefreshService,
+  FakeNotificationResponses,
+  FakeNotificationService,
+  FixedOffsetTimeZone,
+  testNotificationText,
+} from './notificationFixtures';
 import {
   FakeImageProcessor,
   FakeMediaPermissionService,
@@ -93,6 +101,7 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...profileFactories,
     ...photosFactories,
     ...syncFactories,
+    ...notificationsFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.
@@ -109,6 +118,12 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     imageProcessor: () => new FakeImageProcessor(),
     mediaPermissionService: () => new FakeMediaPermissionService(),
     photoLibraryPicker: () => new FakePhotoLibraryPicker(),
+    // No native notifications or background tasks in tests; permission starts undetermined, the zone is UTC.
+    notificationService: () => new FakeNotificationService(),
+    notificationTimeZone: () => new FixedOffsetTimeZone(0),
+    notificationText: () => testNotificationText(),
+    backgroundRefreshService: () => new FakeBackgroundRefreshService(),
+    notificationResponses: () => new FakeNotificationResponses(),
     ...valueFactories(overrides),
   });
 }

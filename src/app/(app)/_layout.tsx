@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
+import { useNotificationLifecycle } from '@/features/notifications/presentation/hooks/useNotificationLifecycle';
 import { AppDrawerContent } from '@/features/shell/presentation/components/AppDrawerContent';
 import { isDrawerSwipeEnabled } from '@/features/shell/presentation/navigation';
 import { useOfflineLifecycle } from '@/features/sync/presentation/hooks/useOfflineLifecycle';
@@ -16,6 +17,8 @@ export default function MainDrawerLayout() {
   const pathname = usePathname();
   // Reconnect refetching and pending-change tracking run while someone is signed in.
   useOfflineLifecycle();
+  // Reminders follow every change while signed in; leaving (sign-out, expiry) clears them.
+  useNotificationLifecycle();
 
   return (
     <Drawer

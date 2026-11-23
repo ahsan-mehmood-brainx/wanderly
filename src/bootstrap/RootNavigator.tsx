@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { useAppDispatch, useAppSelector } from '@/core/store/hooks';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { useSessionLifecycle } from '@/features/auth/presentation/hooks/useSessionLifecycle';
+import { useClearNotificationsWhenSignedOut } from '@/features/notifications/presentation/hooks/useClearNotificationsWhenSignedOut';
+import { useNotificationResponses } from '@/features/notifications/presentation/hooks/useNotificationResponses';
 import { loadOnboardingStatus } from '@/features/onboarding/presentation/state/onboardingSlice';
 import { routes } from '@/shared/navigation/routes';
 import { useDeferredDeepLink } from '@/shared/navigation/useDeferredDeepLink';
@@ -43,6 +45,10 @@ export function RootNavigator() {
   useEffect(() => {
     void dispatch(loadOnboardingStatus());
   }, [dispatch]);
+  // Here rather than in the signed-in layout: a launch with an expired session never mounts that.
+  useClearNotificationsWhenSignedOut();
+  // Taps recorded during launch or while signed out are replayed by useDeferredDeepLink.
+  useNotificationResponses(phase === 'app');
   useDeferredDeepLink(phase === 'app');
   const entry = PHASE_ENTRY[phase];
 

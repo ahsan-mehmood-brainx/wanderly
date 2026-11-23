@@ -750,7 +750,7 @@ data          StoragePreferencesRepository (preferences.v1) · StorageLocalProfi
 
 ### Preferences
 
-`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. Wanderly doesn't send notifications yet, so the switches only save a choice, and Settings says so.
+`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. The two notification switches are the master switches for local notifications (§ 21): Trip reminders covers upcoming-trip, trip-start and activity reminders, and Budget alerts covers the budget threshold alert. Turning one on saves it at once and shows the OS prompt only while the permission was never asked for. While a switch is on and the permission isn't granted, a row says notifications are off for Wanderly, with Allow (or Open Settings once blocked), and it is read again on return to the foreground. Reminder times opens `/profile/notifications`. On web the switches stay, and the caption says reminders work in the mobile app.
 
 The Location section shows the OS permission (`checkMapLocationPermission`). It offers Allow while the permission can still be requested and Open Settings once it is granted (to revoke it) or blocked, and it checks the permission again whenever the app returns to the foreground.
 
@@ -962,3 +962,80 @@ Not implemented, because there is nothing to conflict with. The intended strateg
 ### Testing
 
 `testing/offlineFixtures.ts` provides `createOfflineStorage` (real SQLite with every migration, the outbox and cache store; pass an `engine` to simulate a restart) and `FakeSyncGateway` (scripted results, records pushes and keys). Covered: the NetInfo adapter; `PersistentCache` (fresh, stale, fallback per error kind, max age, `notFound`, `Retry-After`, corrupt and old-format records, store failure, restart, pruning); the discover decorators (restart offline, memory not keeping saved copies, offline search, cached "no article"); `coalesce`, the SQLite outbox (coalescing, keys, rollback, claim, acknowledge during a push, reschedule, failed and retry, restart recovery, owners); the retry policy; the engine (local-only, push, offline wait, connection lost mid-request, captive-portal pause, backoff timer, failed and retry, single flight, restart re-send, gone entities, missing sources, signed out, unreadable database, debounce); repositories recording in the same transaction (including rollback when the outbox write fails); migrations 6 and 7 (upgrade, failure and retry); RTK Query reconnect; the indicator, Offline and data, the destination saved-copy notice after a restart offline, and conversion on reconnect.
+
+## 21. Notifications and background tasks
+
+`features/notifications/` schedules local notifications (expo-notifications) for upcoming trips, trip starts and timed activities, shows budget alerts, and refreshes them in the background (expo-task-manager with expo-background-task). There is no backend, so there are no push notifications or push tokens.
+
+### Layers
+
+```
+domain        Notification (kinds, ids, links, data) · NotificationSettings · planReminders · evaluateBudgetAlerts
+              ports: NotificationService, NotificationRepository, DeviceTimeZone, NotificationText,
+                     BackgroundRefreshService, NotificationResponses
+              use cases: ReconcileNotifications (single-flight), ClearNotifications,
+                         Get/RequestNotificationPermission, Get/SaveNotificationSettings
+data          ExpoNotificationService (UnsupportedNotificationService on web) · StorageNotificationRepository
+              SystemDeviceTimeZone · I18nNotificationText · ExpoBackgroundRefreshService · ExpoNotificationResponses
+presentation  useNotificationLifecycle (signed-in layout) · useNotificationResponses (RootNavigator)
+              useClearNotificationsWhenSignedOut (RootNavigator) · useSessionReconcile
+              useNotificationPermissionSetting · useNotificationSettings · NotificationSettingsScreen
+              routeForNotification
+bootstrap     defineNotificationRefreshTask (module scope in app/_layout.tsx)
+```
+
+### Declarative reconcile
+
+Nothing is scheduled one event at a time. `planReminders` works out every reminder that should exist now, from the owner's upcoming and ongoing trips, their timed and unfinished activities within the trip dates, the master switches (§ 18), the reminder times and the device time zone. `ReconcileNotifications` compares that set with `listScheduled()` and:
+
+- keeps a notification whose identifier, owner and fingerprint match;
+- cancels every other Wanderly notification (prefix `wanderly.`): obsolete, changed, unreadable or another account's;
+- schedules what is missing, soonest first, at most 60 (iOS keeps 64 pending; later ones are added on later runs).
+
+Identifiers are stable per entity (`wanderly.trip-upcoming.<tripId>`, `wanderly.trip-start.<tripId>`, `wanderly.activity.<activityId>`), so scheduling never duplicates. The fingerprint is `fireAt|title|body|url`, so a new time, zone or language reschedules. Day reminders fire at 09:00 device time; activity reminders fire the chosen lead time before the start. Notifications of other apps are never touched.
+
+Reconcile is single-flight like `SyncEngine`: a call during a run queues one more run and shares its result. It runs on sign-in or launch, 300 ms after a burst of local changes (`localChangeLog.recorded`), on return to the foreground, after a master switch or the language changes (debounced, so the preference is saved first), after a Reminder times change, after the permission is granted, and from the background task. It returns `Result` and never throws.
+
+While the permission isn't granted, both switches are off, or nobody is signed in, it schedules nothing and cancels every Wanderly notification. Reconcile never shows the permission prompt; Settings does.
+
+### Budget alerts
+
+`evaluateBudgetAlerts` uses `summarizeBudget` (only expenses converted into the trip currency count) for upcoming and ongoing trips with a budget. When spending reaches the threshold (50, 75, 80, 90 or 100%, default 80) an immediate notification shows the trip and percent, and `notifications.state.v1` remembers the trip and threshold. Dropping below re-arms it, a changed threshold is judged against the new value, deleted trips are forgotten, and an alert that couldn't be shown is tried again. Another account's alerts are never carried over.
+
+### Storage
+
+`notifications.settings.v1` holds the reminder times (upcoming trip Off/1/2/3/7 days, trip start on/off, activity Off/15/30/60/120/1440 minutes, budget threshold), each field falling back to its default on its own. `notifications.state.v1` holds the owner of the scheduled notifications and the budget alerts sent. `SaveNotificationSettings` merges into what is stored, one save at a time, like `SavePreferences`.
+
+### Background refresh
+
+While a master switch is on and the permission is granted, `wanderly-notification-refresh` is registered with a minimum interval of 360 minutes. The OS decides when (and whether) it runs: iOS uses BGTaskScheduler windows, Android WorkManager, and Low Power Mode or a restricted status skips registration. The task reconciles for the last stored owner (no session is restored there) and returns Success or Failed. Nothing depends on it running on time: every foreground trigger repeats the same reconcile. It is unregistered when everything is off and on sign-out, and never registered on web. `TaskManager.defineTask` runs at module scope in `app/_layout.tsx`, as headless launches require.
+
+### Taps
+
+Notification data carries `{ url, ownerId, kind, fingerprint }`. `routeForNotification` accepts only well-formed data for the signed-in owner and a link on the `resolveDeepLink` allow-list (§ 10): trip reminders open the trip, activity reminders the activity, budget alerts the trip's budget. While signed in, a tap navigates at once. During launch or while signed out, the link goes to `deepLinkInbox` and opens after sign-in; the tap that cold-started the app is read with `getLastNotificationResponse`.
+
+### Platform notes
+
+- Android needs a channel before the permission prompt (Android 13+), so `RequestNotificationPermission` calls `ensureChannels` first (`reminders`, `budget`), named in the app's language. Reconcile passes the reminders' language whenever the permission is granted, and setting a channel again with the same id renames it, so the names follow a language change.
+- Android 12+ may deliver DATE triggers a little late without the exact-alarm permission, which Wanderly doesn't request. Settings says times are approximate.
+- iOS provisional (quiet) authorisation counts as granted.
+- A notification that fires while the app is open shows as a banner and in the list (`setNotificationHandler`).
+- expo-notifications and background tasks need a development build; Expo Go doesn't include them.
+
+### Edge cases
+
+| Case                                        | Behaviour                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permission denied or blocked                | Nothing is scheduled and Wanderly's notifications are cancelled; Settings offers Allow or Open Settings.                                          |
+| Duplicate scheduling                        | Stable identifiers, a fingerprint diff and single-flight reconcile.                                                                               |
+| Trip deleted or cancelled                   | The next reconcile (local change) cancels its reminders.                                                                                          |
+| Itinerary time or trip dates changed        | The fingerprint changes, so the reminder is cancelled and rescheduled at the new time.                                                            |
+| Activity deleted, completed or out of dates | Its reminder is cancelled.                                                                                                                        |
+| Time zone change                            | Fire times follow the device zone at the next reconcile (foreground or background).                                                               |
+| Device reboot or OS cleanup                 | The OS keeps scheduled notifications; anything lost is scheduled again at the next reconcile.                                                     |
+| Sign-out, expiry or another account         | `useClearNotificationsWhenSignedOut` (root) runs `ClearNotifications` whenever auth is unauthenticated, including a launch that finds the session expired; a new owner's first reconcile replaces the rest. |
+| Web                                         | No notifications or background task; the switches stay and the caption says so.                                                                   |
+
+### Testing
+
+`testing/notificationFixtures.ts` provides `FakeNotificationService` (in-memory OS, permission and prompt answer, list failure), `FakeBackgroundRefreshService`, `FakeNotificationResponses` (taps and the launch tap), `FixedOffsetTimeZone`, `wallClock` and `fakeNotificationCopy`; `createTestDependencies` uses them by default, and `jest.setup.ts` mocks the three Expo modules. Covered: the planner (defaults, skips, cap, settings, fingerprints, zones), budget alerts, routing, reconcile against real SQLite (idempotency, deletes, edits, strays, other owners, permission, switches, signed out, errors, budget dedupe, background owner, single flight), the storage repository, the Expo adapters with module mocks, the lifecycle hook, notification taps through the root navigator, the background task, Settings and Reminder times. The Spanish and Urdu notification text is machine-written and needs review before release.

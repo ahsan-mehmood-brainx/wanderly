@@ -70,7 +70,9 @@
           "microphonePermission": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications",
+      "expo-background-task"
     ],
     "scheme": "wanderly",
     "experiments": {

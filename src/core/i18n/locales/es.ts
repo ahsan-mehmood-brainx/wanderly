@@ -1037,7 +1037,12 @@ export const es: TranslationResources = {
       title: 'Notificaciones',
       tripReminders: 'Recordatorios de viaje',
       budgetAlerts: 'Alertas de presupuesto',
-      notSentYet: 'Wanderly aún no envía notificaciones. Tus preferencias se guardan para cuando lo haga.',
+      hint: 'Los recordatorios se programan en este dispositivo. Tu teléfono decide el momento exacto, así que pueden llegar un poco tarde.',
+      webHint: 'Los recordatorios y las alertas funcionan en la app de Wanderly para iPhone y Android.',
+      off: 'Las notificaciones de Wanderly están desactivadas',
+      allow: 'Permitir',
+      openSettings: 'Abrir Ajustes',
+      reminderTimes: 'Horarios de recordatorio',
     },
     location: {
       title: 'Ubicación',
@@ -1068,6 +1073,51 @@ export const es: TranslationResources = {
       title: 'Sin conexión',
       row: 'Sin conexión y datos',
       hint: 'Consulta qué funciona sin conexión y gestiona la información guardada.',
+    },
+  },
+  notifications: {
+    settings: {
+      title: 'Horarios de recordatorio',
+      intro:
+        'Los recordatorios de viaje llegan a las {{time}} en tu dispositivo. Activa Recordatorios de viaje o Alertas de presupuesto en Ajustes.',
+      upcomingTrip: 'Recordatorio de viaje próximo',
+      tripStart: 'Recordatorio de inicio del viaje',
+      tripStartHint: 'A las {{time}} del primer día',
+      activity: 'Recordatorio de actividad',
+      budget: 'Umbral de alerta de presupuesto',
+      off: 'Desactivado',
+      daysBefore_one: '{{count}} día antes',
+      daysBefore_other: '{{count}} días antes',
+      minutesBefore: '{{count}} min antes',
+      hoursBefore_one: '{{count}} hora antes',
+      hoursBefore_other: '{{count}} horas antes',
+      percentSpent: '{{percent}} % gastado',
+      loadError: 'No pudimos cargar tus horarios de recordatorio. Se muestran los predeterminados.',
+      saveError: 'No pudimos guardar este cambio. Inténtalo de nuevo.',
+    },
+    channels: {
+      reminders: 'Recordatorios de viaje',
+      budget: 'Alertas de presupuesto',
+    },
+    content: {
+      tripUpcoming: {
+        title: 'Viaje próximo',
+        body_one: '{{tripTitle}} a {{destination}} empieza mañana.',
+        body_other: '{{tripTitle}} a {{destination}} empieza en {{count}} días.',
+      },
+      tripStart: {
+        title: 'Tu viaje empieza hoy',
+        body: '{{tripTitle}} a {{destination}} comienza hoy.',
+      },
+      activity: {
+        title: 'Próximamente: {{activityTitle}}',
+        body: 'Empieza a las {{time}} · {{tripTitle}}',
+        bodyTomorrow: 'Mañana a las {{time}} · {{tripTitle}}',
+      },
+      budget: {
+        title: 'Alerta de presupuesto',
+        body: '{{tripTitle}}: has gastado el {{percent}} % del presupuesto.',
+      },
     },
   },
   privacy: {

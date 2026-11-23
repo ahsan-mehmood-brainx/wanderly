@@ -4,6 +4,7 @@ import { type DiscoverDependencies } from '@/features/discover/di';
 import { type FavoritesDependencies } from '@/features/favorites/di';
 import { type ItineraryDependencies } from '@/features/itinerary/di';
 import { type MapDependencies } from '@/features/map/di';
+import { type NotificationsDependencies } from '@/features/notifications/di';
 import { type OnboardingDependencies } from '@/features/onboarding/di';
 import { type PhotosDependencies } from '@/features/photos/di';
 import { type PreferencesDependencies } from '@/features/preferences/di';
@@ -37,4 +38,5 @@ export type AppDependencies = CoreDependencies &
   BudgetDependencies &
   ProfileDependencies &
   PhotosDependencies &
-  SyncDependencies;
+  SyncDependencies &
+  NotificationsDependencies;

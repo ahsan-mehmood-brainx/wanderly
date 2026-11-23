@@ -13,6 +13,7 @@ import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore } from '@/core/store/store';
 import { SESSION_MARKER_KEY, SESSION_SECURE_KEY } from '@/features/auth/data/SecureSessionRepository';
 import { signOut } from '@/features/auth/presentation/state/authSlice';
+import { NOTIFICATION_ID_PREFIX } from '@/features/notifications/domain/Notification';
 import { ONBOARDING_STORAGE_KEY } from '@/features/onboarding/data/StorageOnboardingRepository';
 import { deepLinkInbox } from '@/shared/navigation/deepLinks';
 import { routes } from '@/shared/navigation/routes';
@@ -20,7 +21,9 @@ import { httpError, stubDummyJson, testSession } from '@/testing/authFixtures';
 import { FakeHttpClientFactory } from '@/testing/FakeHttpClient';
 import { InMemoryKeyValueStore } from '@/testing/InMemoryKeyValueStore';
 import { ManualClock } from '@/testing/ManualClock';
+import { FakeBackgroundRefreshService, FakeNotificationService } from '@/testing/notificationFixtures';
 import { createTestDependencies } from '@/testing/testDependencies';
+import { TRIP_OWNER } from '@/testing/tripFixtures';
 
 import { AppProviders } from './AppProviders';
 import { RootNavigator } from './RootNavigator';
@@ -33,7 +36,11 @@ interface Scenario {
   readonly initialUrl?: string;
   /** Scripts the HTTP fake before the app starts (e.g. a refresh refused during launch). */
   readonly configureApi?: (api: ReturnType<typeof stubDummyJson>) => void;
+  /** Notifications a previous run left for the signed-in account (scheduled, registered, owner stored). */
+  readonly leftoverNotifications?: boolean;
 }
+
+const LEFTOVER_REMINDER = `${NOTIFICATION_ID_PREFIX}trip.leftover.start`;
 
 /** Signed-in area stand-in: the drawer and native tabs need native views, the guards under test don't. */
 function SignedInHome() {
@@ -45,7 +52,13 @@ function TripProbe() {
   return <Text>{`Trip ${tripId}`}</Text>;
 }
 
-async function launch({ onboarded = true, storedSession, initialUrl = '/', configureApi }: Scenario = {}) {
+async function launch({
+  onboarded = true,
+  storedSession,
+  initialUrl = '/',
+  configureApi,
+  leftoverNotifications = false,
+}: Scenario = {}) {
   const keyValueStore = new InMemoryKeyValueStore(onboarded ? { [ONBOARDING_STORAGE_KEY]: 'true' } : {});
   const secureStore = new InMemoryKeyValueStore();
   if (storedSession) {
@@ -56,12 +69,21 @@ async function launch({ onboarded = true, storedSession, initialUrl = '/', confi
   const api = stubDummyJson(httpClientFactory);
   configureApi?.(api);
   const clock = new ManualClock(1_000_000);
+  const notificationService = new FakeNotificationService();
+  const backgroundRefresh = new FakeBackgroundRefreshService();
   const dependencies: AppDependencies = createTestDependencies({
     keyValueStore,
     secureStore,
     httpClientFactory,
     clock,
+    notificationService,
+    backgroundRefreshService: backgroundRefresh,
   });
+  if (leftoverNotifications) {
+    notificationService.seed(LEFTOVER_REMINDER, { url: '/trips/leftover', ownerId: TRIP_OWNER, kind: 'tripStart' });
+    await backgroundRefresh.register();
+    await dependencies.notificationRepository.saveState({ ownerId: TRIP_OWNER, budgetAlerted: {} });
+  }
   const store = createAppStore(dependencies);
   const container = { dependencies, store, i18n: createI18n('en') };
 
@@ -98,7 +120,17 @@ async function launch({ onboarded = true, storedSession, initialUrl = '/', confi
     { initialUrl },
   );
 
-  return { router: rendered, store, api, secureStore, keyValueStore, dependencies, clock };
+  return {
+    router: rendered,
+    store,
+    api,
+    secureStore,
+    keyValueStore,
+    dependencies,
+    clock,
+    notificationService,
+    backgroundRefresh,
+  };
 }
 
 async function signInWith(username: string, password: string) {
@@ -318,6 +350,55 @@ describe('logout and expiry', () => {
     });
 
     expect(await screen.findByText('Your session expired. Please sign in again.')).toBeOnTheScreen();
+  });
+});
+
+describe('notifications while signed out', () => {
+  async function storedOwner(dependencies: AppDependencies) {
+    const state = await dependencies.notificationRepository.loadState();
+    if (!state.ok) throw state.error;
+    return state.value.ownerId;
+  }
+
+  it("clears the last account's notifications when a launch finds the session expired", async () => {
+    const { dependencies, notificationService, backgroundRefresh } = await launch({
+      storedSession: testSession({ accessTokenExpiresAt: 0 }),
+      configureApi: ({ publicApi }) => publicApi.on('POST', '/auth/refresh', httpError(403, 'forbidden')),
+      leftoverNotifications: true,
+    });
+
+    expect(await screen.findByText('Your session expired. Please sign in again.')).toBeOnTheScreen();
+    await waitFor(() => expect(notificationService.identifiers()).toEqual([]));
+    expect(backgroundRefresh.registered).toBe(false);
+    expect(notificationService.dismissPresented).toHaveBeenCalled();
+    expect(await storedOwner(dependencies)).toBeNull();
+  });
+
+  it('clears notifications on sign-out', async () => {
+    const { dependencies, notificationService, backgroundRefresh } = await launch({
+      storedSession: testSession(),
+      leftoverNotifications: true,
+    });
+    await screen.findByText('Signed-in home');
+
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Probe sign out' }));
+
+    expect(await screen.findByText("You've signed out.")).toBeOnTheScreen();
+    await waitFor(() => expect(notificationService.identifiers()).toEqual([]));
+    expect(backgroundRefresh.registered).toBe(false);
+    expect(await storedOwner(dependencies)).toBeNull();
+  });
+
+  it('keeps notifications when the stored session is restored', async () => {
+    const { dependencies, notificationService, backgroundRefresh } = await launch({
+      storedSession: testSession(),
+      leftoverNotifications: true,
+    });
+
+    expect(await screen.findByText('Signed-in home')).toBeOnTheScreen();
+    expect(notificationService.identifiers()).toEqual([LEFTOVER_REMINDER]);
+    expect(backgroundRefresh.registered).toBe(true);
+    expect(await storedOwner(dependencies)).toBe(TRIP_OWNER);
   });
 });
 

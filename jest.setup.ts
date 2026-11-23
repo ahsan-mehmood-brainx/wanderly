@@ -97,3 +97,41 @@ jest.mock('expo-camera', () => {
     },
   };
 });
+
+// expo-notifications, expo-task-manager and expo-background-task need native modules. Tests use the fakes
+// from createTestDependencies; these keep the production adapters importable (adapter tests mock them again).
+jest.mock('expo-notifications', () => {
+  const undetermined = { status: 'undetermined', granted: false, canAskAgain: true, expires: 'never' };
+  return {
+    getPermissionsAsync: jest.fn(async () => undetermined),
+    requestPermissionsAsync: jest.fn(async () => undetermined),
+    setNotificationChannelAsync: jest.fn(async () => null),
+    scheduleNotificationAsync: jest.fn(async (request: { identifier?: string }) => request.identifier ?? 'scheduled'),
+    cancelScheduledNotificationAsync: jest.fn(async () => undefined),
+    getAllScheduledNotificationsAsync: jest.fn(async () => []),
+    getPresentedNotificationsAsync: jest.fn(async () => []),
+    dismissNotificationAsync: jest.fn(async () => undefined),
+    setNotificationHandler: jest.fn(),
+    addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+    getLastNotificationResponse: jest.fn(() => null),
+    clearLastNotificationResponse: jest.fn(),
+    DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
+    AndroidImportance: { DEFAULT: 5, HIGH: 6 },
+    IosAuthorizationStatus: { NOT_DETERMINED: 0, DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 },
+    SchedulableTriggerInputTypes: { DATE: 'date', TIME_INTERVAL: 'timeInterval' },
+  };
+});
+
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskDefined: jest.fn(() => false),
+  isTaskRegisteredAsync: jest.fn(async () => false),
+}));
+
+jest.mock('expo-background-task', () => ({
+  getStatusAsync: jest.fn(async () => 2),
+  registerTaskAsync: jest.fn(async () => undefined),
+  unregisterTaskAsync: jest.fn(async () => undefined),
+  BackgroundTaskStatus: { Restricted: 1, Available: 2 },
+  BackgroundTaskResult: { Success: 1, Failed: 2 },
+}));

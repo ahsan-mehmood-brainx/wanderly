@@ -12,6 +12,8 @@ import { discoverFactories } from '@/features/discover/di';
 import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
+import { I18nNotificationText } from '@/features/notifications/data/I18nNotificationText';
+import { notificationsFactories } from '@/features/notifications/di';
 import { onboardingFactories } from '@/features/onboarding/di';
 import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
@@ -61,6 +63,9 @@ export function createAppContainer(): AppContainer {
     ...profileFactories,
     ...photosFactories,
     ...syncFactories,
+    ...notificationsFactories,
+    // Only the root has the app's i18n instance; notificationsFactories leave this to it.
+    notificationText: () => new I18nNotificationText(i18n),
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

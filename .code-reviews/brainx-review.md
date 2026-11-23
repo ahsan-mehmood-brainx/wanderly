@@ -1,129 +1,121 @@
 ---
-diff_hash: 5c7f2654e6d50b5f650419362ea8b5ab1977dc71fead9db070dc39650b21c576
-reviewed_at: 2026-11-22T20:14:50Z
+diff_hash: f025662d4afabce85b2957421771fdc7b016a5dcaceae0ae81bd3f4d26317ea4
+reviewed_at: 2026-11-23T18:26:49Z
 ---
 
 ## Summary
 
-Feature 13, offline-first. Replaces expo-network with NetInfo behind `ConnectivityService`; adds a durable SQLite cache (`cache_entries`, migration 6) with saved-copy fallback for destination data, a transactional outbox (`sync_outbox`, migration 7) written by the trip, activity, expense and favorites repositories inside their own transactions, an outbox coalescer, an exponential sync retry policy, a `SyncGateway` port with a local-only implementation, and a single-flight `SyncEngine`. UI: connectivity pill on tab-root headers, Settings › Offline and data screen, saved-copy notice on destinations, RTK Query refetch on reconnect, expense conversion on reconnect. Docs (§ 20) and en/es/ur strings. Stack: React (Expo / React Native). Scope: all changes (staged and unstaged), as requested for the commit. SQL is fully parameterised, stored data is validated with zod, and no secrets or PII leave the device. Six findings, none critical.
+Fresh review of all staged changes (71 files, `git add -A` already applied; `git diff --cached` hash above). This supersedes the notifications-only review of 2026-11-23T18:04:39Z, because the staged diff has changed since then. Stack: React (Expo / React Native; `react` in dependencies, no NestJS marker). Single repository with staged changes.
+
+What changed: local notifications for trip reminders, trip-start reminders, activity reminders and budget alerts (`src/features/notifications/`), with expo-notifications, expo-background-task and expo-task-manager added (SDK 58 versions, config plugins in `app.json`). Sign-out and session expiry clear every Wanderly notification from the root navigator, so a launch with an expired session is covered. Reconcile passes the session's preferences, Android channel names follow the reminders' language, notification taps go through the deep-link allow-list with an owner check, and the Reminder times screen and Settings permission row are added. Also: `OptionGroup` `focusableGroup` mode, en/es/ur strings and the architecture doc.
+
+Results of the previous findings: all four are fixed. The sign-out clear now runs at the root and has a test for a launch with an expired session. Both reconcile call sites pass session preferences. Channel names are localized. The reminder time is interpolated into the copy.
+
+Verification run for this review: `npx tsc --noEmit` exit 0; `npx expo lint` exit 0; `npx jest src/features/notifications src/bootstrap src/features/preferences src/shared/ui` 49 suites and 449 tests passed.
+
+Not verified here: behaviour on a device or simulator (permission prompts, background task scheduling, notification delivery), which needs a development build. The non-test source (about 2,900 lines) was read in full. Test files were not read line by line, except the notifications-while-signed-out block in `RootNavigator.test.tsx`; they pass. `package-lock.json` was not reviewed beyond the dependency lines in `package.json`. The React criteria are web-oriented; they were applied where they fit (hook rules, effect cleanup, state and error handling), and the React Native specifics were reviewed against the Expo and React Native APIs in use.
 
 ## Findings
 
 ### Critical (0)
 
-### High (0)
+### High (1)
+- **src/bootstrap/RootNavigator.tsx:49** — Notifications are cleared from the root navigator on every unauthenticated state, including a launch that finds the session expired (previously cleared only from the signed-in layout, which an expired launch never mounts). *(correctness / privacy)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `useClearNotificationsWhenSignedOut()` runs at the root and clears whenever `selectAuthStatus` is `unauthenticated`. `restoreSession.fulfilled` with a non-signed-in result calls `signedOut()`, which sets that status, so an expired or unreadable session at launch also clears. The auth status starts as `idle`, so the clear does not fire before the restore finishes. `RootNavigator.test.tsx` "clears the last account's notifications when a launch finds the session expired" covers this path.
 
-### Medium (3)
-- **src/features/trips/data/LocalTripRepository.ts:142** — Deleting a trip records only the trip's delete. Its activities and expenses are removed by SQLite's cascade without being recorded, so their pending upserts stay in `sync_outbox` for good. Offline and data then counts "changes saved only on this device" for entities that no longer exist, and the outbox grows with every created-then-deleted trip. *(correctness)*
+### Medium (1)
+- **src/features/notifications/presentation/hooks/useNotificationSettings.ts:69** — Reconcile was started without the session's preferences from the Settings screens (`reconcileNotifications.execute({ trigger: 'settings' })`), so it could plan against stored preferences while a master-switch save was pending or had failed. *(consistency / correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: `LocalTripRepository.delete` (LocalTripRepository.ts:155-173) now checks the trip exists, records a delete for every activity and expense listed in `TRIP_CASCADES` while the rows still exist, records the trip's delete, then deletes, all in one transaction. Never-pushed children coalesce away; pushed ones get explicit deletes. Covered by outboxRecording.test.ts (cascade cleared, pushed children, missing trip records nothing, entity types match the child repositories).
-- **src/core/sync/SyncEngine.ts:165** — Interrupted operations are re-queued only on the first run of the session. If anything throws after `claim` (a sync source loader that rejects, or `acknowledge`/`reschedule` failing on a busy database), the operation stays `inFlight`: it is skipped by `listDue` and never pushed again until the app restarts. A rejecting loader is not caught in `pushOne` either. *(correctness)*
-  - status: fixed
-  - dev_reasoning: N/A
-  - ai_reasoning: Fixed: `run()` now calls `recoverInterrupted` at the start of every run (SyncEngine.ts:164-168), which is safe because runs are single-flight, and a rejecting sync source is converted to an AppError and goes through `handleFailure` (SyncEngine.ts:224-227). Tests cover a run that throws after `claim` (re-sent on the next run with the same key) and a throwing source (rescheduled, not stuck).
-- **src/features/sync/presentation/screens/OfflineDataScreen.tsx:149** — `Section` is a line-for-line copy of the private `Section` in `SettingsScreen.tsx:160`. *(maintainability)*
-  - status: fixed
-  - dev_reasoning: N/A
-  - ai_reasoning: Fixed: extracted to `shared/ui/SettingsSection.tsx` (exported from `@/shared/ui`); both SettingsScreen and OfflineDataScreen use it and their private copies are gone.
+  - ai_reasoning: Fixed. Both call sites now go through `useSessionReconcile`, which passes the session preferences from the store (`useNotificationSettings.ts:69`, `useNotificationPermissionSetting.ts:76`). The calls without preferences are gone.
 
-### Low (3)
-- **src/features/sync/presentation/format.ts:23** — The connection type is interpolated raw ("Online (wifi)", "Online (cellular)"), so Spanish and Urdu users see untranslated English identifiers. *(i18n)*
+### Low (2)
+- **src/features/notifications/data/ExpoNotificationService.ts** — Android channel names were hard-coded English. *(consistency / i18n)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: `describeConnection` maps wifi, cellular, ethernet, bluetooth, vpn and wimax to `offline.screen.connectionTypes.*` in en, es and ur, and shows plain "Online" otherwise (format.ts:17-29). A test checks the Spanish label "Conectado (datos móviles)".
-- **src/features/sync/presentation/components/ConnectivityIndicator.tsx:53** — The change to "Offline"/"Back online" is announced only through `accessibilityLiveRegion`, which is Android-only; VoiceOver users on iOS get no announcement. *(accessibility)*
+  - ai_reasoning: Fixed. Reconcile (`notificationUseCases.ts:210`) and the permission request (`notificationUseCases.ts:419`) pass `text.channelNames(language)`. The adapter renames the channels when the names change. The English defaults only apply before the first reconcile, and that run sets the names before anything is scheduled.
+- **src/core/i18n/locales/en.ts:1072** — "9:00" was hard-coded in the reminder copy in en, es and ur, duplicating `REMINDER_HOUR`. *(maintainability)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: connectivity changes are announced once with `AccessibilityInfo.announceForAccessibility` from `useOfflineLifecycle` (mounted once), instead of the Android-only live region on each of the six header pills, which is removed. useOfflineLifecycle.test.tsx checks one announcement per real change.
-- **src/features/sync/presentation/screens/OfflineDataScreen.tsx:197** — Hard-coded spacing (`gap: 12` here, `gap: 4` in `stackOptions.tsx:26`) instead of the theme's spacing tokens used everywhere else. *(consistency)*
+  - ai_reasoning: Fixed. The intro and trip-start hint interpolate `{{time}}`, and `NotificationSettingsScreen` fills it from `REMINDER_HOUR` through `formatTime`, which gives "9:00 AM" in 12-hour locales. All three locales carry the parameter.
+
+### New Low (1)
+- **src/features/notifications/domain/repositories.ts:18** — `DeviceTimeZone.id()` is declared on the port and implemented by `SystemDeviceTimeZone` (`SystemDeviceTimeZone.ts:8`), but no production code calls it; only `SystemDeviceTimeZone.edge.test.ts` does. *(maintainability)*
   - status: fixed
-  - dev_reasoning: N/A
-  - ai_reasoning: Fixed: OfflineDataScreen uses `spacing.md` and stackOptions uses `spacing.xs` from `useAppTheme()`; no hard-coded gaps remain.
+  - dev_reasoning: Removed `id()` from the `DeviceTimeZone` port, `SystemDeviceTimeZone`, the `FixedOffsetTimeZone` test fixture and the "AC8 names a zone" test. No production code needed the zone name. `tsc --noEmit` and `expo lint` exit 0; `jest src/features/notifications src/bootstrap` 29 suites, 295 tests pass.
+  - ai_reasoning: A search under `src/features/notifications` finds no production caller of `.id()`. The method is dead port surface that can drift from the real zone handling, with no functional impact today. Either remove it from the port, the adapter and its test, or use it where the zone matters (for example in a debug log of reminder planning).
 
 ## Reviewed files
-- README.md
-- docs/ARCHITECTURE.md
+- .code-reviews/brainx-review.md (replaced by this review)
+- app.json
+- docs/ARCHITECTURE.md (notifications and preferences sections read)
 - jest.setup.ts
-- package-lock.json (skimmed: dependency change only, NetInfo added and expo-network removed)
+- package-lock.json (not reviewed; dependency lines checked against package.json)
 - package.json
 - src/app/(app)/(tabs)/profile/_layout.tsx
-- src/app/(app)/(tabs)/profile/offline.tsx
+- src/app/(app)/(tabs)/profile/notifications.tsx
 - src/app/(app)/_layout.tsx
-- src/bootstrap/coreFactories.test.ts
-- src/bootstrap/coreFactories.ts
-- src/bootstrap/createAppContainer.test.ts
+- src/app/_layout.tsx
+- src/bootstrap/RootNavigator.tsx
+- src/bootstrap/RootNavigator.test.tsx (notifications-while-signed-out block read; rest skimmed)
+- src/bootstrap/backgroundTasks.ts
+- src/bootstrap/backgroundTasks.test.ts (skimmed)
 - src/bootstrap/createAppContainer.ts
-- src/bootstrap/databaseMigrations.ts
-- src/core/cache/CacheStore.ts
-- src/core/cache/MemoryCache.ts
-- src/core/cache/PersistentCache.test.ts
-- src/core/cache/PersistentCache.ts
-- src/core/cache/SqliteCacheStore.ts
-- src/core/cache/cacheMigrations.ts
+- src/bootstrap/notificationTaps.test.tsx (skimmed)
 - src/core/di/AppDependencies.ts
-- src/core/di/CoreDependencies.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
 - src/core/i18n/locales/ur.ts
-- src/core/network/NetInfoConnectivityService.test.ts
-- src/core/network/NetInfoConnectivityService.ts
-- src/core/sync/LocalChange.ts
-- src/core/sync/PendingOperation.ts
-- src/core/sync/SqliteSyncOutbox.test.ts
-- src/core/sync/SqliteSyncOutbox.ts
-- src/core/sync/SyncEngine.test.ts
-- src/core/sync/SyncEngine.ts
-- src/core/sync/SyncGateway.ts
-- src/core/sync/SyncOutbox.ts
-- src/core/sync/SyncRetryPolicy.test.ts
-- src/core/sync/SyncRetryPolicy.ts
-- src/core/sync/coalesce.test.ts
-- src/core/sync/coalesce.ts
-- src/core/sync/offlineMigrations.test.ts
-- src/core/sync/syncMigrations.ts
-- src/features/budget/data/LocalExpenseRepository.ts
-- src/features/budget/di.ts
-- src/features/budget/presentation/hooks/useTripBudget.test.tsx
-- src/features/budget/presentation/hooks/useTripBudget.ts
-- src/features/discover/data/caching.ts
-- src/features/discover/data/persistentCaching.test.ts
-- src/features/discover/data/persistentCaching.ts
-- src/features/discover/di.ts
-- src/features/discover/domain/Country.ts
-- src/features/discover/domain/Destination.ts
-- src/features/discover/domain/usecases/GetDestinationDetails.ts
-- src/features/discover/presentation/components/SavedCopyNotice.tsx
-- src/features/discover/presentation/screens/DestinationScreen.test.tsx
-- src/features/discover/presentation/screens/DestinationScreen.tsx
-- src/features/discover/presentation/state/discoverApi.ts
-- src/features/favorites/data/LocalFavoritesRepository.ts
-- src/features/favorites/di.ts
-- src/features/itinerary/data/LocalActivityRepository.ts
-- src/features/itinerary/di.ts
-- src/features/photos/data/LocalPhotoRepository.test.ts
+- src/core/store/hooks.ts
+- src/features/notifications/data/ExpoBackgroundRefreshService.ts
+- src/features/notifications/data/ExpoBackgroundRefreshService.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationResponses.ts
+- src/features/notifications/data/ExpoNotificationService.ts
+- src/features/notifications/data/ExpoNotificationService.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationService.dismiss.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationService.edge.test.ts (skimmed)
+- src/features/notifications/data/I18nNotificationText.ts
+- src/features/notifications/data/I18nNotificationText.test.ts (skimmed)
+- src/features/notifications/data/StorageNotificationRepository.ts
+- src/features/notifications/data/StorageNotificationRepository.test.ts (skimmed)
+- src/features/notifications/data/StorageNotificationRepository.alertsOwner.test.ts (skimmed)
+- src/features/notifications/data/SystemDeviceTimeZone.ts
+- src/features/notifications/data/SystemDeviceTimeZone.edge.test.ts (skimmed)
+- src/features/notifications/di.ts
+- src/features/notifications/domain/Notification.ts
+- src/features/notifications/domain/NotificationSettings.ts
+- src/features/notifications/domain/budgetAlerts.ts
+- src/features/notifications/domain/budgetAlerts.test.ts (skimmed)
+- src/features/notifications/domain/budgetAlerts.edge.test.ts (skimmed)
+- src/features/notifications/domain/reminderPlanning.ts
+- src/features/notifications/domain/reminderPlanning.test.ts (skimmed)
+- src/features/notifications/domain/reminderPlanning.edge.test.ts (skimmed)
+- src/features/notifications/domain/repositories.ts
+- src/features/notifications/domain/usecases/notificationUseCases.ts
+- src/features/notifications/domain/usecases/notificationUseCases.test.ts (skimmed)
+- src/features/notifications/domain/usecases/notificationUseCases.edge.test.ts (skimmed)
+- src/features/notifications/domain/usecases/notificationSession.test.ts (skimmed)
+- src/features/notifications/domain/usecases/backgroundReconcileSignOut.edge.test.ts (skimmed)
+- src/features/notifications/presentation/hooks/useClearNotificationsWhenSignedOut.ts
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.ts
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.preferences.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationPermissionSetting.ts
+- src/features/notifications/presentation/hooks/useNotificationPermissionSetting.edge.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationResponses.ts
+- src/features/notifications/presentation/hooks/useNotificationResponses.edge.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationSettings.ts
+- src/features/notifications/presentation/hooks/useSessionReconcile.ts
+- src/features/notifications/presentation/notificationRouting.ts
+- src/features/notifications/presentation/notificationRouting.test.ts (skimmed)
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.tsx
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.test.tsx (skimmed)
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.edge.test.tsx (skimmed)
 - src/features/preferences/presentation/screens/SettingsScreen.tsx
-- src/features/shell/presentation/stackOptions.tsx
-- src/features/sync/data/outboxRecording.test.ts
-- src/features/sync/data/syncEntitySources.ts
-- src/features/sync/di.ts
-- src/features/sync/domain/savedData.ts
-- src/features/sync/presentation/components/ConnectivityIndicator.test.tsx
-- src/features/sync/presentation/components/ConnectivityIndicator.tsx
-- src/features/sync/presentation/format.ts
-- src/features/sync/presentation/hooks/useOfflineData.ts
-- src/features/sync/presentation/hooks/useOfflineLifecycle.test.tsx
-- src/features/sync/presentation/hooks/useOfflineLifecycle.ts
-- src/features/sync/presentation/hooks/useSyncStatus.ts
-- src/features/sync/presentation/rtkQueryConnectivity.test.ts
-- src/features/sync/presentation/rtkQueryConnectivity.ts
-- src/features/sync/presentation/screens/OfflineDataScreen.test.tsx
-- src/features/sync/presentation/screens/OfflineDataScreen.tsx
-- src/features/trips/data/LocalTripRepository.ts
-- src/features/trips/di.ts
+- src/features/preferences/presentation/screens/SettingsScreen.test.tsx (skimmed)
 - src/shared/navigation/routes.ts
-- src/shared/ui/SettingsSection.tsx
-- src/shared/ui/icons.ts
-- src/shared/ui/index.ts
-- src/testing/offlineFixtures.ts
-- src/testing/testDependencies.ts
+- src/shared/ui/OptionGroup.tsx
+- src/testing/notificationFixtures.ts (skimmed)
+- src/testing/testDependencies.ts (skimmed)

@@ -13,6 +13,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="privacy" options={{ title: t('privacy.title') }} />
       <Stack.Screen name="about" options={{ title: t('about.title') }} />
       <Stack.Screen name="offline" options={{ title: t('offline.screen.title') }} />
+      <Stack.Screen name="notifications" options={{ title: t('notifications.settings.title') }} />
       <Stack.Screen name="design-system" options={{ title: t('settings.developer.designSystem') }} />
     </Stack>
   );

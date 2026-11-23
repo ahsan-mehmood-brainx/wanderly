@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
 import { AppProviders } from '@/bootstrap/AppProviders';
+import { defineNotificationRefreshTask } from '@/bootstrap/backgroundTasks';
 import { createAppContainer } from '@/bootstrap/createAppContainer';
 import { RootNavigator } from '@/bootstrap/RootNavigator';
 import { useAppFonts } from '@/core/theme/fonts';
@@ -14,6 +15,9 @@ import { deepLinkInbox } from '@/shared/navigation/deepLinks';
 void SplashScreen.preventAutoHideAsync();
 
 const container = createAppContainer();
+
+// TaskManager needs the task defined in global scope, before anything renders; there are no background tasks on web.
+if (Platform.OS !== 'web') defineNotificationRefreshTask(container.dependencies);
 
 // Native links reach the inbox through `+native-intent`, which doesn't run on web; there, the page URL is the link.
 if (Platform.OS === 'web' && typeof window !== 'undefined') deepLinkInbox.record(window.location.pathname);
