@@ -1,5 +1,6 @@
 import { screen, userEvent } from '@testing-library/react-native';
 
+import { DEFAULT_PREFERENCES } from '@/features/preferences/domain/Preferences';
 import { MockPreferencesRepository } from '@/testing/MockPreferencesRepository';
 import { renderWithProviders } from '@/testing/renderWithProviders';
 
@@ -36,7 +37,9 @@ describe('AppErrorView', () => {
 
   it('uses the kind-specific message under the generic title for other errors', async () => {
     await renderWithProviders(<AppErrorView errorKind="server" />, {
-      dependencies: { preferencesRepository: new MockPreferencesRepository({ theme: 'system', language: 'es' }) },
+      dependencies: {
+        preferencesRepository: new MockPreferencesRepository({ ...DEFAULT_PREFERENCES, language: 'es' }),
+      },
     });
 
     expect(await screen.findByRole('header', { name: 'Algo salió mal' })).toBeOnTheScreen();

@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 
 import { AppIcon } from './AppIcon';
@@ -53,6 +54,7 @@ export function AppInput({
 }: AppInputProps) {
   const { t } = useTranslation();
   const { colors, spacing, radii, sizes, typography, opacity } = useAppTheme();
+  const { isRTL } = useLayoutDirection();
   const [focused, setFocused] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
@@ -106,7 +108,13 @@ export function AppInput({
             setFocused(false);
             onBlur?.(event);
           }}
-          style={[styles.input, typography.body, { color: colors.text }, multiline ? styles.multiline : null]}
+          style={[
+            styles.input,
+            typography.body,
+            { color: colors.text },
+            isRTL ? styles.rtl : null,
+            multiline ? styles.multiline : null,
+          ]}
         />
         {showClear ? (
           <AppIconButton
@@ -149,6 +157,13 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     // Android adds extra font padding that misaligns text vertically.
     includeFontPadding: false,
+  },
+  // `right` is meant physically. Pinning the input's own layout to LTR stops
+  // native from treating it as `end` and drawing Urdu text on the left.
+  rtl: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    direction: 'ltr',
   },
   multiline: {
     minHeight: 96,

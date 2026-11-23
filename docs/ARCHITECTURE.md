@@ -509,7 +509,7 @@ presentation  TripsScreen (My Trips) · TripListScreen (Upcoming, Completed) · 
               tripsSlice (mirror of the table, one change at a time) · selectors (status as of today)
 domain        Trip / StoredTrip / TripInput · localDate · tripStatus · tripValidation · money
               TripRepository · TripOwnerProvider · TripCoverStore · ImagePickerService
-              GetTrips · GetTrip · CreateTrip · UpdateTrip · DeleteTrip · SetTripCancelled · PickCoverImage
+              GetTrips · GetTrip · CreateTrip · UpdateTrip · DeleteTrip · SetTripCancelled · SetTripCover · PickCoverImage
 data          LocalTripRepository (SqlDatabase) · SessionTripOwnerProvider · tripMigrations
               FileSystemTripCoverStore · ExpoImagePickerService
 core          SqlDatabase · SqliteDatabase · migrate · expoSqliteDriver
@@ -521,16 +521,17 @@ core          SqlDatabase · SqliteDatabase · migrate · expoSqliteDriver
 
 ### Rules
 
-| Topic        | Rule                                                                                                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dates        | `YYYY-MM-DD` calendar dates, so a trip doesn't move when the time zone changes. Both the first and last day belong to the trip.                                                                         |
-| Status       | Not stored. `cancelled` if `cancelledAt` is set; otherwise `upcoming` before the start, `ongoing` through the last day, then `completed`. Re-derived for today in selectors, so trips move at midnight. |
-| Overlaps     | Trips that aren't cancelled can't overlap: `a.start < b.end && b.start < a.end`. One trip may start the day another ends. Saving or restoring into taken dates is refused and names the other trip.     |
-| Budget       | Required, positive, at most 10,000,000 in major units and the currency's decimals. Stored as integer minor units. Thousands separators are rejected, not guessed.                                       |
-| Required     | Title (max 80), destination, both dates (end not before start, max 366 days), budget, currency. Description and cover are optional.                                                                     |
-| Destination  | Discover search when online. Offline: recently viewed and curated places, or any typed name (`custom:` id, which has no destination page).                                                              |
-| Cover photo  | Copied to `documents/trip-covers` when the trip is saved. The database keeps the relative path, because the absolute one changes on iOS updates. Not offered on web.                                    |
-| Unsaved form | Leaving with changes asks first.                                                                                                                                                                        |
+| Topic        | Rule                                                                                                                                                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dates        | `YYYY-MM-DD` calendar dates, so a trip doesn't move when the time zone changes. Both the first and last day belong to the trip.                                                                                                                                  |
+| Status       | Not stored. `cancelled` if `cancelledAt` is set; otherwise `upcoming` before the start, `ongoing` through the last day, then `completed`. Re-derived for today in selectors, so trips move at midnight.                                                          |
+| Overlaps     | Trips that aren't cancelled can't overlap: `a.start < b.end && b.start < a.end`. One trip may start the day another ends. Saving or restoring into taken dates is refused and names the other trip.                                                              |
+| Budget       | Required, positive, at most 10,000,000 in major units and the currency's decimals. Stored as integer minor units. Thousands separators are rejected, not guessed.                                                                                                |
+| Required     | Title (max 80), destination, both dates (end not before start, max 366 days), budget, currency. Description and cover are optional.                                                                                                                              |
+| Destination  | Discover search when online. Offline: recently viewed and curated places, or any typed name (`custom:` id, which has no destination page).                                                                                                                       |
+| Cover photo  | Copied to `documents/trip-covers` when the trip is saved. The database keeps the relative path, because the absolute one changes on iOS updates. Not offered on web.                                                                                             |
+| Unsaved form | Leaving with changes asks first.                                                                                                                                                                                                                                 |
+| Set as cover | `SetTripCover` (a gallery photo's Set as cover) copies the image in through `TripCoverStore`, saves only the cover, and deletes the old cover file after the save. It skips form validation and the overlap check, and waits for other trip saves (`notSaving`). |
 
 ### Accounts
 
@@ -574,30 +575,30 @@ Positions are 0..n-1 per day. Insert, update (including a move to another day), 
 
 ### Rules
 
-| Topic          | Rule                                                                                                                                                                                          |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Times          | Optional `HH:mm` wall-clock times at the destination, with no time zone, so nothing moves when the device's zone changes. An end time needs a start time and must be later the same day.      |
-| Day            | Must be one of the trip's days. The form only offers trip days.                                                                                                                               |
-| Duration       | End minus start, only when both are set. Shown as `1 h 30 min`.                                                                                                                               |
-| Conflicts      | Two timed activities on the same day overlap when `a.start < b.end && b.start < a.end`; back-to-back ones don't. Overlaps are saved, but flagged on the timeline, overview, details and form. |
-| Duplicates     | Refused: same trip and day, same title (trimmed, any case) and same start time (two untimed ones count as the same). The error names the existing activity.                                  |
-| Order          | `sortOrder` is the display order. A new activity, or one whose day or start time changes, goes after the last one starting at or before it; untimed ones go last. Dragging sets any order.   |
-| Cost           | Optional, positive, at most 1,000,000 in major units and the currency's decimals; defaults to the trip's currency. Totals are per currency, never converted. A free activity leaves it empty. |
-| Location       | Free-text address (offline), current position (GPS works offline), or place search (online only). Coordinates go through `checkCoordinates`.                                                 |
-| Limits         | Title 80, description and notes 2000, address 200 characters; 50 activities per day, which keeps the fixed-height drag list practical.                                                       |
-| Unsaved form   | Leaving with changes asks first.                                                                                                                                                              |
+| Topic        | Rule                                                                                                                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Times        | Optional `HH:mm` wall-clock times at the destination, with no time zone, so nothing moves when the device's zone changes. An end time needs a start time and must be later the same day.      |
+| Day          | Must be one of the trip's days. The form only offers trip days.                                                                                                                               |
+| Duration     | End minus start, only when both are set. Shown as `1 h 30 min`.                                                                                                                               |
+| Conflicts    | Two timed activities on the same day overlap when `a.start < b.end && b.start < a.end`; back-to-back ones don't. Overlaps are saved, but flagged on the timeline, overview, details and form. |
+| Duplicates   | Refused: same trip and day, same title (trimmed, any case) and same start time (two untimed ones count as the same). The error names the existing activity.                                   |
+| Order        | `sortOrder` is the display order. A new activity, or one whose day or start time changes, goes after the last one starting at or before it; untimed ones go last. Dragging sets any order.    |
+| Cost         | Optional, positive, at most 1,000,000 in major units and the currency's decimals; defaults to the trip's currency. Totals are per currency, never converted. A free activity leaves it empty. |
+| Location     | Free-text address (offline), current position (GPS works offline), or place search (online only). Coordinates go through `checkCoordinates`.                                                  |
+| Limits       | Title 80, description and notes 2000, address 200 characters; 50 activities per day, which keeps the fixed-height drag list practical.                                                        |
+| Unsaved form | Leaving with changes asks first.                                                                                                                                                              |
 
 ### Edge cases
 
-| Case                          | Behaviour                                                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trip dates edited             | Activities now outside the trip are kept and listed under "Outside trip dates" on the overview. They can be opened, completed and deleted; saving an edit requires a trip day. |
+| Case                          | Behaviour                                                                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trip dates edited             | Activities now outside the trip are kept and listed under "Outside trip dates" on the overview. They can be opened, completed and deleted; saving an edit requires a trip day.   |
 | Trip deleted                  | SQLite cascades; `itinerarySlice` drops the trip's activities on `deleteTrip.fulfilled`. Itinerary screens show "Trip not found", and a create for a deleted trip is `notFound`. |
-| Activity deleted or not owned | Details and edit show "Activity not found" with a way back to the itinerary. Another account's activity behaves as missing.                                     |
-| Reorder save fails            | The day returns to the previous order and shows the storage error.                                                                                              |
-| Double tap on save            | The thunk `condition` allows one change at a time, so it saves once.                                                                                            |
-| Offline                       | Everything works; only "Search places" is disabled, with "Search needs a connection".                                                                           |
-| Sign-out, expiry, sign-in     | `itinerarySlice` resets and ignores results from requests started before.                                                                                       |
+| Activity deleted or not owned | Details and edit show "Activity not found" with a way back to the itinerary. Another account's activity behaves as missing.                                                      |
+| Reorder save fails            | The day returns to the previous order and shows the storage error.                                                                                                               |
+| Double tap on save            | The thunk `condition` allows one change at a time, so it saves once.                                                                                                             |
+| Offline                       | Everything works; only "Search places" is disabled, with "Search needs a connection".                                                                                            |
+| Sign-out, expiry, sign-in     | `itinerarySlice` resets and ignores results from requests started before.                                                                                                        |
 
 ### Drag and drop
 
@@ -639,27 +640,211 @@ Inserting a favorite uses `ON CONFLICT (owner_id, target_id) DO NOTHING` and the
 
 ### Rules
 
-| Topic               | Rule                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Identity            | A target is the destination route id (`country-pt`, a curated slug, `place-…`) or the map place id (`osm:node/…`). The same place reached by two ids counts twice. |
-| Categories          | Countries → `country`; cities and places → `destination`; attractions, museums and parks → `attraction`; restaurants → `restaurant`; landmarks → `landmark`. Hotels can't be saved. |
+| Topic               | Rule                                                                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Identity            | A target is the destination route id (`country-pt`, a curated slug, `place-…`) or the map place id (`osm:node/…`). The same place reached by two ids counts twice.                               |
+| Categories          | Countries → `country`; cities and places → `destination`; attractions, museums and parks → `attraction`; restaurants → `restaurant`; landmarks → `landmark`. Hotels can't be saved.              |
 | Default collections | Want to Visit, Must Visit, Favorite Restaurants and Favorite Attractions, created with `INSERT OR IGNORE` on the first load and named from i18n. They can't be renamed or deleted (`forbidden`). |
-| Custom collections  | Name trimmed, 1 to 40 characters, unique among the account's custom collections ignoring case. At most 50 per account.                                     |
-| Membership          | Many to many. Saving a place adds it to no collection; the picker sets exactly the ticked ones. Removing a place from a collection keeps it saved.         |
-| Search and filter   | Name, subtitle and address, ignoring case and accents, combined with a category chip. Newest first.                                                         |
-| Removing            | Unsaving from a detail screen is immediate. Removing from Saved Places, and deleting a collection, ask first through `ConfirmSheet`.                        |
+| Custom collections  | Name trimmed, 1 to 40 characters, unique among the account's custom collections ignoring case. At most 50 per account.                                                                           |
+| Membership          | Many to many. Saving a place adds it to no collection; the picker sets exactly the ticked ones. Removing a place from a collection keeps it saved.                                               |
+| Search and filter   | Name, subtitle and address, ignoring case and accents, combined with a category chip. Newest first.                                                                                              |
+| Removing            | Unsaving from a detail screen is immediate. Removing from Saved Places, and deleting a collection, ask first through `ConfirmSheet`.                                                             |
 
 ### Edge cases
 
-| Case                      | Behaviour                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Double tap on Save        | The thunk `condition` allows one change at a time, and the database keeps one row per target.                                   |
-| Collection deleted        | Its memberships go with it; its places stay saved. A link to it shows "Collection not found".                                   |
-| Storage failure on load   | `AppErrorView` with `errorKind: 'storage'` and Try again.                                                                       |
-| Corrupt row               | Skipped with a warning, together with memberships that point at it.                                                             |
-| Offline                   | Everything works. Opening a saved destination needs a connection, as the destination screen always has.                       |
+| Case                      | Behaviour                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Double tap on Save        | The thunk `condition` allows one change at a time, and the database keeps one row per target.                                     |
+| Collection deleted        | Its memberships go with it; its places stay saved. A link to it shows "Collection not found".                                     |
+| Storage failure on load   | `AppErrorView` with `errorKind: 'storage'` and Try again.                                                                         |
+| Corrupt row               | Skipped with a warning, together with memberships that point at it.                                                               |
+| Offline                   | Everything works. Opening a saved destination needs a connection, as the destination screen always has.                           |
 | Sign-out, expiry, sign-in | `favoritesSlice` resets and ignores results from requests started before. Rows stay in SQLite for when the account signs back in. |
 
 ### Testing
 
 `testing/favoritesFixtures.ts` has `favoriteTarget`, `favorite`, `restaurantFavorite`, `customCollection` and `seededFavoritesDatabase` (real in-memory SQLite). Domain functions, the repository (constraints, duplicates, cascades, owner separation, corrupt rows, upgrade from version 2, persistence across connections), use cases and the slice have unit tests. `favoritesFlows.test.tsx` covers the screens with `renderRouter`, and `saveFromDetails.test.tsx` covers Save on the destination screen and the map sheet.
+
+## 17. Budget and expenses
+
+`features/budget/` tracks a trip's spending against its budget. The trip's own `budget` and `currency` (integer minor units in `trips`) are the budget and the base currency, so there is no second budget table: the Budget sheet saves them through the trips `updateTrip` thunk. Expenses live in SQLite per account and every operation works offline. The Budget tab (`/budget`) shows the ongoing trip, then the next upcoming one, then the most recently ended one (cancelled trips last), with a switcher; `TripScreen` links to each trip's budget through `BudgetEntryCard`.
+
+### Layers
+
+```
+presentation  BudgetScreen (/budget) · BudgetOverviewScreen (/budget/[tripId]) · ExpenseHistoryScreen (…/expenses)
+              ExpenseFormScreen (…/expenses/new, …/[expenseId]/edit) · ExpenseDetailsScreen (…/[expenseId])
+              SpendingBreakdownScreen (…/breakdown) · BudgetSummaryCard · SpendingProgressBar
+              CategoryBreakdownChart · DailySpendingChart (plain Views, no chart library) · ExpenseRow
+              ExpenseCategoryPicker · PaymentMethodPicker · ExchangeRateNote · UnconvertedBanner
+              BudgetSheet · TripSwitcherSheet · ExpenseDateSheet · BudgetEntryCard · format
+              useTripBudget · useBudgetTrip · useExpense · useExpenseForm
+              budgetSlice (mirror of SQLite, one change at a time) · selectors (summary, default trip)
+domain        Expense · ExchangeRateInfo · expenseValidation · budgetCalculations (convertMinor, summarizeBudget)
+              ExpenseRepository · ExchangeRateRepository · ExpenseConverter
+              GetTripBudget · GetExpense · CreateExpense · UpdateExpense · DeleteExpense · PreviewExchangeRate
+data          LocalExpenseRepository · LocalExchangeRateCache (SqlDatabase) · budgetMigrations (version 4)
+              FrankfurterExchangeRateRepository (HttpClient) · CachedExchangeRateRepository (decorator)
+```
+
+### Money
+
+Every amount is an integer in its currency's minor units (`currencyFractionDigits`). Totals add integers only. Rates are decimal strings (`'1.0805'`) and `convertMinor` converts with BigInt, rounding half up, so no floating-point value ever reaches a total. `summarizeBudget` counts an expense only when it has a base amount in the trip's current currency; the rest are reported as `unconvertedCount` and never mixed into the totals. Percent spent is in basis points and `null` for a zero budget; category shares use the largest remainder so they add up to 100.
+
+### Database
+
+Migration 4 creates `expenses` (owner-scoped, cascading from `trips`, `CHECK`s for a positive amount, known category, payment method and rate source, and base amount, rate, rate date and rate source all set or all `NULL`) and `exchange_rates` (`PRIMARY KEY (base, quote, requested_date)`, shared by every account because rates are public data; `requested_date` is a date or `latest`). Conversion updates for many expenses run in one transaction.
+
+### Exchange rates
+
+Frankfurter (`https://api.frankfurter.dev/v1`, no key): `/{date}?base=FROM&symbols=TO` for past dates, `/latest` for today and later, `/currencies` for the supported list. The rate date stored and shown is the one the API returns (the previous working day on weekends and holidays).
+
+| Step          | Rule                                                                                                                                                                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Same currency | Rate `1`, source `identity`, no request.                                                                                                                                                                                                                       |
+| Cache         | A historical rate is kept for good once it is for the date itself or the date is 2+ days back (published in every timezone); otherwise it, like `latest`, is reused for 6 hours. The currency list is kept 7 days in `KeyValueStore` (`budget.currencies.v1`). |
+| API           | On a miss, the answer is saved with its date. Failures are never cached.                                                                                                                                                                                       |
+| Fallback      | If the API fails (offline, timeout, 5xx, 429, missing date), the nearest earlier cached rate for the pair is used, source `fallback`, shown as approximate with its own date.                                                                                  |
+| Manual        | With no rate at all, the form offers a rate field; a typed rate is used only then (source `manual`). It must be above 0 and at most 1,000,000, so a converted amount always stays exact.                                                                       |
+| Unconverted   | Otherwise the expense is saved with no base amount, shown as "Not converted yet" and left out of the totals. The next load of a screen with totals (or Try again on the banner) converts it.                                                                   |
+
+Every screen first reads what is stored through `loadTripExpenses` (`GetTripExpenses`), which never calls the API. Only screens that show totals (overview, breakdown, the trip's budget card) then convert in the background through `retryConversions` (`GetTripBudget`), while what was read stays on screen (`loadByTrip[tripId].converted`). One conversion runs per trip at a time: `retryConversions` is skipped while a load or conversion is in flight (`requestId`), so screens showing the same trip and repeated Try again taps share it. An expense saved or deleted during a conversion discards that result and clears `requestId`, and `useTripBudget` starts a new one.
+
+A load also replaces approximate conversions: a `fallback` rate, or, once the expense's date has passed, an API rate dated before it (the latest rate used ahead of the date). Only the stored rate decides this, never `updatedAt`, so editing a title doesn't freeze an approximate rate. A weekend expense is re-checked from the rate cache and nothing is written when the rate is the same.
+
+### Edge cases
+
+| Case                                                         | Behaviour                                                                                                                                    |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zero budget                                                  | Not allowed by the trip form (`budget_minor > 0`); the calculations still handle it (no percentage, remaining is minus the spending).        |
+| Negative or zero amount, too many decimals, unknown currency | Field errors from `validateExpenseInput`; nothing is saved. Currencies are the trip form's list plus KWD.                                    |
+| Exchange API unavailable or missing historical rate          | The expense still saves (fallback, manual or unconverted).                                                                                   |
+| Base currency changed                                        | The trip's budget reloads; every expense whose base currency differs is converted again and saved in one transaction, or marked unconverted. |
+| Double tap on Save                                           | The thunk `condition` allows one change at a time.                                                                                           |
+| Deleted trip or expense, another account's expense           | "Trip not found" or "Expense not found".                                                                                                     |
+| Sign-out, expiry, sign-in                                    | `budgetSlice` resets and ignores results from requests started before.                                                                       |
+
+### Testing
+
+`testing/budgetFixtures.ts` has `expense`, `euroExpense`, `unconvertedExpense`, `expenseInput`, `BUDGET_TRIP`, `seededBudgetDatabase` (real in-memory SQLite) and `stubFrankfurter`. The calculations, validation, repositories, rate cache, Frankfurter client (fake and real HTTP client), use cases and slice have unit tests; `budgetFlows.test.tsx` covers the screens with `renderRouter`. The financial calculations need human review before production, as for any generated code.
+
+## 18. Profile, settings and localization
+
+`features/preferences/` owns what the traveller sets once for the whole app (theme, language, default currency, notification choices) and the Settings, Privacy and About screens. `features/profile/` owns the local profile (display name, photo, home base, bio) and the travel stats. Authentication stays in `features/auth/`. The account details (email, username, account photo) are read-only here, and Sign out reuses `useSignOut`.
+
+### Layers
+
+```
+presentation  SettingsScreen · PrivacyScreen · AboutScreen · CurrencyPreferenceSheet · SettingSwitchRow
+              usePreferenceSettings · useLocationPermissionSetting · applyNativeLayoutDirection
+              ProfileScreen · EditProfileScreen · useLocalProfile · useProfileIdentity · useTravelStats · useProfileForm
+              preferencesSlice (+ layoutRestartRequired) · profileSlice (one save at a time, reset on account change)
+domain        Preferences (theme, language, currency, notifications) · resolvePreferences (resolveCurrency)
+              LocalProfile · profileValidation · travelStats · LocalProfileRepository · ProfilePhotoStore
+              GetLocalProfile · SaveLocalProfile · PickProfilePhoto
+data          StoragePreferencesRepository (preferences.v1) · StorageLocalProfileRepository (profile.local.v1.<ownerId>)
+              FileSystemProfilePhotoStore (profile-photos/) · UnsupportedProfilePhotoStore (web)
+```
+
+### Preferences
+
+`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. Wanderly doesn't send notifications yet, so the switches only save a choice, and Settings says so.
+
+The Location section shows the OS permission (`checkMapLocationPermission`). It offers Allow while the permission can still be requested and Open Settings once it is granted (to revoke it) or blocked, and it checks the permission again whenever the app returns to the foreground.
+
+### Local profile
+
+Each account's profile is one JSON document in `KeyValueStore`, the same approach as preferences and custom markers, so no SQLite migration is needed. The owner comes from the trips `TripOwnerProvider`, and with nobody signed in the use cases return `unauthorized`. The display name is trimmed and must be 1–60 characters, or `null` to follow the account name. The form starts with the account name, and if no display name was saved and the name is left unchanged, it saves `null`, so a later change to the account name still shows. The home base can be at most 80 characters and the bio at most 160. Lengths count characters (code points), not bytes. A picked photo is a temporary file. It is copied to `documents/profile-photos/` only when the profile is saved, and the copy is deleted if the save fails. The replaced photo is deleted only after a successful save, and an unchanged photo is kept as stored. Both photo stores build on `core/storage/DocumentImageStore`. The picker asks for a square crop (`pickImage({ aspect: [1, 1] })`), while trip covers keep the 16:9 default. `useProfileIdentity` shows the local name and photo in place of the account's on Profile and in the drawer. If the local profile can't load, Profile falls back to the account name and photo, says so, and offers Try again.
+
+Stats: Total trips counts every trip except cancelled ones, Completed trips counts trips whose status is `completed` as of today, and Saved places counts every favorite. Each source loads independently. A stat shows a placeholder while its source loads and `—` if the load failed.
+
+### Right-to-left layout (Urdu)
+
+Direction is handled in two parts:
+
+1. **Content flips immediately.** `PreferencesGate` wraps the app in `LayoutDirectionProvider` and a root view with a Yoga `direction`. `Screen` and `AppBottomSheet` set `direction` again, because native screen containers and `Modal` don't reliably inherit it. `AppText` adds `writingDirection: 'rtl'` and maps logical `align="start"`/`"end"` to the physical side. `AppInput` aligns text to the right, and `AppIcon` mirrors the icons in `DIRECTIONAL_ICONS` (chevrons, back, sign-out, undo). On iOS the SF Symbols in `IOS_SELF_MIRRORING_ICONS` flip themselves: on Fabric a view's semantic direction follows its Yoga layout direction (the JS `direction`), so AppIcon never mirrors them there. This still needs a check on a device between switching language and restarting. The drawer opens from the right.
+2. **Native chrome changes after a restart.** `applyNativeLayoutDirection` calls `I18nManager.allowRTL`/`forceRTL`. React Native reads these flags at launch, and they control stack headers, tab order and the back gesture. The app has no `expo-updates`, so it can't reload itself. When `I18nManager.isRTL` doesn't match the language, Settings notes that headers, tabs and the back gesture will match the language the next time the app starts. The wording doesn't assume the traveller switched language, since an RTL device with English selected also starts mismatched. `allowRTL(false)` also keeps English and Spanish left to right on a device set to an RTL locale. `app.json` sets `supportsRTL` for expo-localization, which takes effect only in a new native build.
+
+Urdu typography comes from `createTypography({ rtlScript: true })`. It drops letter spacing (which breaks the joins between letters) and case transforms, and raises line heights by about 1.35×, rounded to the 4pt grid, so Nastaliq glyphs don't clip. Inter has no Arabic-script glyphs, so Urdu text falls back to the system font. Hermes may format numbers and dates for `ur` with Latin digits; that is acceptable.
+
+### Edge cases
+
+| Case                                      | Behaviour                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A preference can't be saved               | The change still applies for this session, and Settings shows the dismissible save error.        |
+| The profile can't be saved                | A storage error appears under the form, and the typed text stays.                                |
+| Leaving Edit profile with unsaved changes | A sheet asks whether to keep editing or discard.                                                 |
+| Another account on the same device        | It sees its own (empty) profile. `profileSlice` resets on sign-out, expiry and sign-in.          |
+| Web                                       | No photo picker (`UnsupportedProfilePhotoStore`), and `applyNativeLayoutDirection` does nothing. |
+| Switching to or from Urdu                 | Content flips at once. The restart notice shows until the native direction matches.              |
+
+### Testing
+
+`testing/profileFixtures.ts` provides `localProfile`, `localProfileInput` and `FakeProfilePhotoStore`. `testing/layoutDirection.ts` finds the `direction` that applies to an element. Unless `initialLanguage` is given, `renderWithProviders` starts i18n in the device language, as the app does. `locales.test.ts` checks that `es` and `ur` have every English key and placeholder. The Urdu translations are machine-written and need review by a native speaker before release.
+
+## 19. Photos
+
+`features/photos/` lets the traveller attach photos to a trip or to one of its itinerary activities, from an in-app camera (expo-camera) or the photo library (expo-image-picker, up to 10 at once). Every image is checked, resized and re-encoded (expo-image-manipulator), copied into app storage and referenced from SQLite. Nothing is uploaded and no backend is involved. `TripScreen` links to the trip gallery through `PhotosEntryCard`, and `ActivityDetailsScreen` shows the activity's latest photos in `ActivityPhotosSection`.
+
+### Layers
+
+```
+presentation  PhotoGalleryScreen (/trips/[tripId]/photos and …/itinerary/[itemId]/photos) · CameraScreen (…/photos/camera)
+              PhotoPreviewScreen (…/photos/preview) · PhotoViewerScreen (…/photos/[photoId], optional ?activityId)
+              CameraCanvas (the only expo-camera import) · PhotoGrid · PhotoTile · AddPhotoMenu · MediaPermissionView
+              PhotosEntryCard · ActivityPhotosSection · PhotosStateView · format
+              useMediaPermission · usePhotoGallery (useTripPhotos, useActivityPhotos, usePhoto) · useAddPhotos
+              photosSlice (metadata mirror, one change at a time, pending selection) · selectors
+domain        Photo · PickedImage · imageValidation (validatePickedImage, fitWithin, parseExifDateTime, limits)
+              PhotoRepository · PhotoFileStore · ImageProcessor · MediaPermissionService · PhotoLibraryPicker
+              GetTripPhotos · GetActivityPhotos · AttachPhotos · DeletePhoto · PrunePhotoFiles
+              GetMediaPermission · RequestMediaPermission · PickLibraryImages
+data          LocalPhotoRepository (SqlDatabase) · photosMigrations (version 5)
+              FileSystemPhotoStore (trip-photos/) · UnsupportedPhotoStore (web) · ExpoImageProcessor
+              ExpoMediaPermissionService · ExpoPhotoLibraryPicker
+```
+
+### Database and files
+
+Migration 5 creates `photos`: owner-scoped, `trip_id` cascading from `trips`, `activity_id` (`NULL` for a photo of the trip itself) cascading from `activities`, a unique relative `reference`, positive `width`/`height`/`file_size`, `mime_type = 'image/jpeg'` and `source IN ('camera', 'library')`. Inserts check that the trip, and the activity within that trip, belong to the same account. Rows hold metadata only; the images are files in `documents/trip-photos/`, written through `core/storage/DocumentImageStore` like trip covers and profile photos, so references stay relative and can't point outside the folder. Rows with corrupt metadata are skipped with a warning.
+
+| Step     | Rule                                                                                                                                                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validate | JPEG, PNG, WebP, HEIC or HEIF by MIME type, or by the jpg/jpeg/png/webp/heic/heif extension when the type is missing. At most 50 MB and positive whole-pixel dimensions. Each rejected image is named in Preview.          |
+| Limits   | 10 images per library selection, 200 photos per trip (the rest are rejected as `limitReached`).                                                                                                                            |
+| Process  | One image at a time: resized to a 2048 px longest edge (never enlarged) and saved as JPEG at quality 0.8, then copied into `trip-photos/` and the temporary output deleted. `taken_at` comes from EXIF `DateTimeOriginal`. |
+| Save     | Every row of one attach is inserted in one transaction. If processing, copying or the insert fails, every copied file is removed and nothing is saved.                                                                     |
+| Delete   | The row first, then the file (best effort). A trip or activity delete cascades the rows; `PrunePhotoFiles` (once per session) deletes files no row of any account references once they are over an hour old.               |
+| Missing  | A row whose file is gone or whose reference is invalid shows "Photo unavailable" in the grid and viewer, and can still be deleted.                                                                                         |
+| Redux    | `photosSlice` keeps metadata and relative references only. Picked or captured images wait in `pending` as temporary URIs until Attach; they aren't put in route params, so a link can't inject a file URI.                 |
+
+### Permissions
+
+| State          | Camera                                                 | Library                                       |
+| -------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `undetermined` | Explanation with Allow; the OS is asked only on Allow. | Same.                                         |
+| `denied`       | Explanation with Allow again (the OS can still ask).   | Same.                                         |
+| `blocked`      | "Access is turned off" with Open Settings.             | Same.                                         |
+| `limited`      | —                                                      | iOS selected-photos access counts as allowed. |
+
+`useMediaPermission` reads the permission again when the app returns to the foreground and sends one request however often Allow is tapped. The camera screen gates itself, so a direct link can't open the camera without permission, and `PickLibraryImages` refuses to open the picker without access. The Add photo choices show in place rather than in a modal sheet, because on iOS the system picker can't be presented while a modal is still dismissing.
+
+### Edge cases
+
+| Case                                        | Behaviour                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Double tap on Attach                        | The thunk `condition` allows one change at a time, and Preview ignores a second tap.                          |
+| Shutter tapped while the camera starts      | The picture is taken as soon as the camera is ready.                                                          |
+| Camera fails to start or no camera          | "Camera isn't available" with Back.                                                                           |
+| Preview opened without a selection          | "Nothing to preview" with Back.                                                                               |
+| Delete fails                                | The confirm sheet closes, the storage error shows and the photo stays.                                        |
+| Set as cover, then delete the gallery photo | The cover is a separate copy in `trip-covers/`, so it stays.                                                  |
+| Deleted trip or activity, another account's | "Trip not found", "Activity not found" or "Photo not found".                                                  |
+| Web                                         | `UnsupportedPhotoStore`: the galleries say photos are available in the mobile app and offer no Add or camera. |
+| Sign-out, expiry, sign-in                   | `photosSlice` resets and ignores results from requests started before.                                        |
+
+`app.json` configures the expo-camera plugin (camera usage text, no microphone, no barcode scanner) and gives expo-image-picker the same camera text, so the two plugins agree on `NSCameraUsageDescription`. Both packages need a new development build; Expo Go builds without them crash on the camera screen.
+
+### Testing
+
+`testing/photoFixtures.ts` has `photo`, `pickedImage`, `PHOTOS_TRIP`, `PHOTO_ACTIVITY`, `seededPhotoDatabase` (real in-memory SQLite), `FakePhotoFileStore` (`missing`, `failImportAt`), `FakeImageProcessor`, `FakeMediaPermissionService` and `FakePhotoLibraryPicker`. `jest.setup.ts` replaces expo-camera's `CameraView` with a View whose ref exposes `mockCamera.takePictureAsync`. Validation, use cases, repository, file store, permission mapping, picker, slice and `useMediaPermission` have unit tests; `photoFlows.test.tsx` drives the routes with `renderRouter`. The native camera, picker and file handling need on-device testing before release.

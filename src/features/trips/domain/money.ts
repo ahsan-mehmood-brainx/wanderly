@@ -1,28 +1,9 @@
-/** Currencies offered in the trip form. Any valid ISO 4217 code is accepted from storage. */
-export const TRIP_CURRENCIES = [
-  'USD',
-  'EUR',
-  'GBP',
-  'AED',
-  'AUD',
-  'BRL',
-  'CAD',
-  'CHF',
-  'CNY',
-  'INR',
-  'JPY',
-  'KRW',
-  'MXN',
-  'NZD',
-  'PKR',
-  'SAR',
-  'SGD',
-  'THB',
-  'TRY',
-  'ZAR',
-] as const;
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES } from '@/core/money/currencies';
 
-export const DEFAULT_TRIP_CURRENCY = 'USD';
+/** Currencies offered in the trip form. Any valid ISO 4217 code is accepted from storage. */
+export const TRIP_CURRENCIES = SUPPORTED_CURRENCIES;
+
+export const DEFAULT_TRIP_CURRENCY = DEFAULT_CURRENCY;
 
 const CURRENCY_CODE = /^[A-Z]{3}$/;
 

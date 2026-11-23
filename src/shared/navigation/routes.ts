@@ -37,6 +37,24 @@ export interface NewActivityRouteParams extends Record<string, string | undefine
   readonly date?: string;
 }
 
+export interface ExpenseRouteParams extends Record<string, string> {
+  readonly tripId: string;
+  readonly expenseId: string;
+}
+
+export interface PhotoFlowRouteParams extends Record<string, string | undefined> {
+  readonly tripId: string;
+  /** Set when the photos are for one of the trip's activities. */
+  readonly activityId?: string;
+}
+
+export interface PhotoRouteParams extends Record<string, string | undefined> {
+  readonly tripId: string;
+  readonly photoId: string;
+  /** Set when opened from an activity's gallery. */
+  readonly activityId?: string;
+}
+
 export interface CollectionRouteParams extends Record<string, string> {
   readonly collectionId: string;
 }
@@ -60,7 +78,10 @@ export const routes = {
   completedTrips: '/trips/completed',
   budget: '/budget',
   profile: '/profile',
+  editProfile: '/profile/edit',
   settings: '/profile/settings',
+  privacy: '/profile/privacy',
+  about: '/profile/about',
   designSystem: '/profile/design-system',
   savedPlaces: '/saved',
   collection: (collectionId: string) =>
@@ -88,6 +109,33 @@ export const routes = {
     ({ pathname: '/trips/[tripId]/itinerary/[itemId]', params: { tripId, itemId } }) satisfies Href,
   editActivity: (tripId: string, itemId: string) =>
     ({ pathname: '/trips/[tripId]/itinerary/[itemId]/edit', params: { tripId, itemId } }) satisfies Href,
+  tripBudget: (tripId: string) => ({ pathname: '/budget/[tripId]', params: { tripId } }) satisfies Href,
+  expenseHistory: (tripId: string) => ({ pathname: '/budget/[tripId]/expenses', params: { tripId } }) satisfies Href,
+  newExpense: (tripId: string) => ({ pathname: '/budget/[tripId]/expenses/new', params: { tripId } }) satisfies Href,
+  expense: (tripId: string, expenseId: string) =>
+    ({ pathname: '/budget/[tripId]/expenses/[expenseId]', params: { tripId, expenseId } }) satisfies Href,
+  editExpense: (tripId: string, expenseId: string) =>
+    ({ pathname: '/budget/[tripId]/expenses/[expenseId]/edit', params: { tripId, expenseId } }) satisfies Href,
+  spendingBreakdown: (tripId: string) =>
+    ({ pathname: '/budget/[tripId]/breakdown', params: { tripId } }) satisfies Href,
+  tripPhotos: (tripId: string) => ({ pathname: '/trips/[tripId]/photos', params: { tripId } }) satisfies Href,
+  activityPhotos: (tripId: string, itemId: string) =>
+    ({ pathname: '/trips/[tripId]/itinerary/[itemId]/photos', params: { tripId, itemId } }) satisfies Href,
+  photoCamera: (tripId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/camera',
+      params: activityId === null ? { tripId } : { tripId, activityId },
+    }) satisfies Href,
+  photoPreview: (tripId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/preview',
+      params: activityId === null ? { tripId } : { tripId, activityId },
+    }) satisfies Href,
+  photo: (tripId: string, photoId: string, activityId: string | null) =>
+    ({
+      pathname: '/trips/[tripId]/photos/[photoId]',
+      params: activityId === null ? { tripId, photoId } : { tripId, photoId, activityId },
+    }) satisfies Href,
 } as const satisfies Record<string, Href | ((...args: never[]) => Href)>;
 
 const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

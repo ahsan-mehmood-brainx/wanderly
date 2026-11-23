@@ -26,6 +26,8 @@ export const icons = {
   beach: icon('beach.umbrella', 'beach_access'),
   bookmark: icon('bookmark', 'bookmark'),
   calendar: icon('calendar', 'calendar_today'),
+  camera: icon('camera', 'photo_camera'),
+  flipCamera: icon('arrow.triangle.2.circlepath.camera', 'flip_camera_ios'),
   car: icon('car', 'directions_car'),
   check: icon('checkmark', 'check'),
   checkCircle: icon('checkmark.circle.fill', 'check_circle'),
@@ -134,3 +136,20 @@ export const icons = {
 } as const satisfies Record<string, IconDefinition>;
 
 export type AppIconName = keyof typeof icons;
+
+/** Icons that point left or right, mirrored in right-to-left layouts. */
+export const DIRECTIONAL_ICONS: ReadonlySet<AppIconName> = new Set<AppIconName>([
+  'back',
+  'chevronLeft',
+  'chevronRight',
+  'logout',
+  'restore',
+]);
+
+/**
+ * Directional icons whose SF Symbol uses backward/forward semantics, so iOS
+ * flips it in an RTL view by itself. The view's direction follows the JS layout
+ * direction, so this holds right after a language switch, before any restart.
+ * AppIcon must not mirror these a second time.
+ */
+export const IOS_SELF_MIRRORING_ICONS: ReadonlySet<AppIconName> = new Set<AppIconName>(['restore']);

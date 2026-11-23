@@ -1,10 +1,13 @@
 import { type AuthDependencies } from '@/features/auth/di';
+import { type BudgetDependencies } from '@/features/budget/di';
 import { type DiscoverDependencies } from '@/features/discover/di';
 import { type FavoritesDependencies } from '@/features/favorites/di';
 import { type ItineraryDependencies } from '@/features/itinerary/di';
 import { type MapDependencies } from '@/features/map/di';
 import { type OnboardingDependencies } from '@/features/onboarding/di';
+import { type PhotosDependencies } from '@/features/photos/di';
 import { type PreferencesDependencies } from '@/features/preferences/di';
+import { type ProfileDependencies } from '@/features/profile/di';
 import { type TripsDependencies } from '@/features/trips/di';
 import { type WeatherDependencies } from '@/features/weather/di';
 
@@ -29,4 +32,7 @@ export type AppDependencies = CoreDependencies &
   MapDependencies &
   TripsDependencies &
   ItineraryDependencies &
-  FavoritesDependencies;
+  FavoritesDependencies &
+  BudgetDependencies &
+  ProfileDependencies &
+  PhotosDependencies;

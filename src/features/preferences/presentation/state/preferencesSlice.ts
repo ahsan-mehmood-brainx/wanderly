@@ -1,9 +1,14 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 import { type AppErrorKind } from '@/core/errors/AppError';
 import { createAppAsyncThunk } from '@/core/store/hooks';
 
-import { DEFAULT_PREFERENCES, type Preferences } from '../../domain/Preferences';
+import {
+  applyPreferenceChanges,
+  DEFAULT_PREFERENCES,
+  type PreferenceChanges,
+  type Preferences,
+} from '../../domain/Preferences';
 
 export interface PreferencesState {
   readonly values: Preferences;
@@ -12,6 +17,8 @@ export interface PreferencesState {
   readonly saveError: AppErrorKind | null;
   /** Latest save request; older saves that settle late must not override its outcome. */
   readonly latestSaveRequestId: string | null;
+  /** The native layout direction no longer matches the language until the app restarts. */
+  readonly layoutRestartRequired: boolean;
 }
 
 const initialState: PreferencesState = {
@@ -19,6 +26,7 @@ const initialState: PreferencesState = {
   status: 'idle',
   saveError: null,
   latestSaveRequestId: null,
+  layoutRestartRequired: false,
 };
 
 /**
@@ -37,7 +45,7 @@ export const loadPreferences = createAppAsyncThunk(
  * must never be written over what storage holds.
  * If persisting fails, the change stays active for this session and the UI is told.
  */
-export const updatePreferences = createAppAsyncThunk<void, Partial<Preferences>, { rejectValue: AppErrorKind }>(
+export const updatePreferences = createAppAsyncThunk<void, PreferenceChanges, { rejectValue: AppErrorKind }>(
   'preferences/update',
   async (changes, { extra, rejectWithValue }) => {
     const result = await extra.savePreferences.execute(changes);
@@ -51,6 +59,9 @@ const preferencesSlice = createSlice({
   reducers: {
     saveErrorDismissed(state) {
       state.saveError = null;
+    },
+    nativeLayoutDirectionApplied(state, action: PayloadAction<{ restartRequired: boolean }>) {
+      state.layoutRestartRequired = action.payload.restartRequired;
     },
   },
   extraReducers: (builder) => {
@@ -66,7 +77,7 @@ const preferencesSlice = createSlice({
         state.status = 'ready';
       })
       .addCase(updatePreferences.pending, (state, action) => {
-        state.values = { ...state.values, ...action.meta.arg };
+        state.values = applyPreferenceChanges(state.values, action.meta.arg);
         state.saveError = null;
         state.latestSaveRequestId = action.meta.requestId;
       })
@@ -77,5 +88,5 @@ const preferencesSlice = createSlice({
   },
 });
 
-export const { saveErrorDismissed } = preferencesSlice.actions;
+export const { saveErrorDismissed, nativeLayoutDirectionApplied } = preferencesSlice.actions;
 export const preferencesReducer = preferencesSlice.reducer;

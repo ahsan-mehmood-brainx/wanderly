@@ -7,13 +7,16 @@ import { createContainer } from '@/core/di/createContainer';
 import { createI18n } from '@/core/i18n/createI18n';
 import { createAppStore, type AppStore } from '@/core/store/store';
 import { authFactories } from '@/features/auth/di';
+import { budgetFactories } from '@/features/budget/di';
 import { discoverFactories } from '@/features/discover/di';
 import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
+import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
 import { resolveLanguage } from '@/features/preferences/domain/resolvePreferences';
+import { profileFactories } from '@/features/profile/di';
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
@@ -53,6 +56,9 @@ export function createAppContainer(): AppContainer {
     ...tripsFactories,
     ...itineraryFactories,
     ...favoritesFactories,
+    ...budgetFactories,
+    ...profileFactories,
+    ...photosFactories,
   });
 
   return { dependencies, store: createAppStore(dependencies), i18n };

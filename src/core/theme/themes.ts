@@ -1,6 +1,6 @@
 import { colorSchemes } from './colors';
 import { shadowsFor, type ThemeShadows } from './shadows';
-import { motion, opacity, radii, sizes, spacing, typography } from './tokens';
+import { createTypography, motion, opacity, radii, sizes, spacing, type TypographyScale } from './tokens';
 import { type ColorScheme, type ThemeColors } from './types';
 
 export interface AppTheme {
@@ -8,21 +8,21 @@ export interface AppTheme {
   readonly colors: ThemeColors;
   readonly spacing: typeof spacing;
   readonly radii: typeof radii;
-  readonly typography: typeof typography;
+  readonly typography: TypographyScale;
   readonly shadows: ThemeShadows;
   readonly sizes: typeof sizes;
   readonly motion: typeof motion;
   readonly opacity: typeof opacity;
 }
 
-function createTheme(scheme: ColorScheme): AppTheme {
+function createTheme(scheme: ColorScheme, rtlScript: boolean): AppTheme {
   const colors = colorSchemes[scheme];
   return {
     scheme,
     colors,
     spacing,
     radii,
-    typography,
+    typography: createTypography({ rtlScript }),
     shadows: shadowsFor(scheme, colors.shadow),
     sizes,
     motion,
@@ -31,6 +31,12 @@ function createTheme(scheme: ColorScheme): AppTheme {
 }
 
 export const themes: Readonly<Record<ColorScheme, AppTheme>> = {
-  light: createTheme('light'),
-  dark: createTheme('dark'),
+  light: createTheme('light', false),
+  dark: createTheme('dark', false),
+};
+
+/** Themes for joined right-to-left scripts (Urdu): same colors, typography without letter spacing. */
+export const rtlScriptThemes: Readonly<Record<ColorScheme, AppTheme>> = {
+  light: createTheme('light', true),
+  dark: createTheme('dark', true),
 };

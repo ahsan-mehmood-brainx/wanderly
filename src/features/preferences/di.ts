@@ -5,7 +5,7 @@ import { type Result } from '@/core/result';
 import { type UseCase } from '@/core/usecase/UseCase';
 
 import { StoragePreferencesRepository } from './data/StoragePreferencesRepository';
-import { type Preferences } from './domain/Preferences';
+import { type PreferenceChanges, type Preferences } from './domain/Preferences';
 import { type PreferencesRepository } from './domain/PreferencesRepository';
 import { LoadPreferences } from './domain/usecases/LoadPreferences';
 import { SavePreferences } from './domain/usecases/SavePreferences';
@@ -14,7 +14,7 @@ import { SavePreferences } from './domain/usecases/SavePreferences';
 export interface PreferencesDependencies {
   readonly preferencesRepository: PreferencesRepository;
   readonly loadPreferences: UseCase<void, Preferences>;
-  readonly savePreferences: UseCase<Partial<Preferences>, Result<void, AppError>>;
+  readonly savePreferences: UseCase<PreferenceChanges, Result<void, AppError>>;
 }
 
 /**

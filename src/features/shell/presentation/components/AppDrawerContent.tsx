@@ -4,11 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAppSelector } from '@/core/store/hooks';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
-import { displayName } from '@/features/auth/domain/AuthUser';
 import { useSignOut } from '@/features/auth/presentation/hooks/useSignOut';
-import { selectCurrentUser } from '@/features/auth/presentation/state/selectors';
+import { useProfileIdentity } from '@/features/profile/presentation/hooks/useProfileIdentity';
 import { routes } from '@/shared/navigation/routes';
 import { AppAvatar, AppBadge, AppDivider, AppIcon, AppText, type AppIconName } from '@/shared/ui';
 
@@ -20,7 +18,7 @@ export function AppDrawerContent({ navigation }: DrawerContentComponentProps) {
   const { colors, spacing } = useAppTheme();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const user = useAppSelector(selectCurrentUser);
+  const identity = useProfileIdentity();
   const { confirmSignOut } = useSignOut();
   const active = activeDestination(pathname);
 
@@ -37,15 +35,15 @@ export function AppDrawerContent({ navigation }: DrawerContentComponentProps) {
       ]}
     >
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
-        {user ? (
+        {identity ? (
           <View style={[styles.row, { gap: spacing.md, paddingTop: spacing.sm }]}>
-            <AppAvatar name={displayName(user)} imageUri={user.imageUrl ?? undefined} size="lg" />
+            <AppAvatar name={identity.name} imageUri={identity.imageUri} size="lg" />
             <View style={[styles.fill, { gap: spacing.xxs }]}>
               <AppText variant="headline" numberOfLines={1}>
-                {displayName(user)}
+                {identity.name}
               </AppText>
               <AppText variant="caption" color="textSecondary" numberOfLines={1}>
-                {user.email}
+                {identity.user.email}
               </AppText>
               <AppBadge label={t('auth.demo.badge')} tone="info" size="sm" style={styles.badge} />
             </View>

@@ -1,11 +1,11 @@
 ---
-diff_hash: 5964ce839ba1cf863932a45c550a2724fa3bf0e25ebd692414725b2487db5b17
-reviewed_at: 2026-11-20T07:43:37Z
+diff_hash: 3fb2d238cc50d025362d146336b48229db43666646e0c61fae4e6bd0d1b869e5
+reviewed_at: 2026-11-22T18:35:59Z
 ---
 
 ## Summary
 
-Adds the Favorites feature (replacing the Saved Places stub): SQLite-backed favorites, collections and memberships (migration 3), owner-scoped repository with zod-validated rows, use cases, an RTK slice with a single-writer lock and stale-load protection, Saved Places and Collection screens, save buttons on the destination screen and map place sheet, i18n (en/es), plus a PreferencesGate fix for applying the device language. Stack: React (Expo / React Native), reviewed with the React criteria adapted to RN. `tsc --noEmit` and `expo lint` ran clean. Queries are parameterized and always scoped by `owner_id`; foreign keys are enabled per connection, so the cascades hold. Migration version 3 follows trips (1) and itinerary (2) with no collision. No Critical, High or Medium findings. The previous `.code-reviews/brainx-review.md` is deleted in this diff, so this is a fresh review.
+Adds the photos feature (feature 09/photos): camera capture and library picking, JPEG re-encoding to app storage, a `photos` SQLite table (migration 5, owner-scoped queries), gallery/viewer/preview screens, trip cover from a gallery photo (`SetTripCover`), orphan file pruning, and en/es/ur strings. Stack: React (Expo / React Native). Ownership checks, reference-pattern validation, cleanup on partial failure and permission handling look sound. Three minor findings.
 
 ## Findings
 
@@ -13,83 +13,91 @@ Adds the Favorites feature (replacing the Saved Places stub): SQLite-backed favo
 
 ### High (0)
 
-### Medium (0)
+### Medium (1)
+- **src/features/photos/presentation/hooks/usePhotos.ts:91** — `items` calls `photoFileStore.exists()` (a synchronous file-system stat) for every photo inside a `useMemo` that recomputes whenever `activities`, `photos` or the store change. With up to 200 photos per trip this blocks the JS thread on each recompute. *(performance)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed: existence results are now cached per reference in a store-keyed map (usePhotos.ts:37-99), so each file is stat-ed once instead of on every recompute.
 
 ### Low (2)
-- **src/features/favorites/presentation/components/SavedPlaceActionsSheet.tsx:77** — When `removeFavorite` is refused (another change is running) or throws, `remove()` just returns to the menu with no message, so the tap looks like it did nothing. *(error-handling)*
-  - status: open
+- **src/features/photos/domain/usecases/photoUseCases.ts:158** — The per-trip photo cap is enforced by a read-then-insert (`countByTrip` then `insertMany`) with no atomic guard, so two overlapping attaches could exceed `MAX_PHOTOS_PER_TRIP`. *(correctness)*
+  - status: fixed
+  - dev_reasoning: The cap is already authoritative in LocalPhotoRepository.insertMany, whose INSERT only runs when `(SELECT COUNT(*) FROM photos WHERE owner_id = ? AND trip_id = ?) < MAX_PHOTOS_PER_TRIP`, inside a transaction. The countByTrip in AttachPhotos is only an early, friendly rejection. Added a repository test that proves a second attach is refused at the cap.
+  - ai_reasoning: Still present: countByTrip then insertMany is unchanged. The UI blocks concurrent changes via `changeRequestId`, so impact is minimal; a count condition in the INSERT would make the limit authoritative.
+- **src/features/photos/presentation/screens/PhotoPreviewScreen.tsx:121** — Preview items are keyed by `${index}-${image.uri}`; removing an item shifts indices and remounts every following row. *(maintainability)*
+  - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: The `notSaving` condition makes a second concurrent change a silent no-op. `CollectionPickerSheet.tsx:56` (`save`) does the same. Showing the generic error message, or disabling the action while `saving` is true, would make the behavior visible. `CollectionNameSheet` documents the same pattern, so this is consistency, not a data risk.
-- **src/features/favorites/presentation/components/SavedPlaceActionsSheet.tsx:143** — The Remove confirm sheet's Cancel calls `onClose`, which closes the whole actions flow instead of returning to the menu; the `remove` step's `onCancel` and the other steps behave differently. *(consistency)*
-  - status: open
-  - dev_reasoning: N/A
-  - ai_reasoning: Minor UX inconsistency: after Keep, the user must reopen the place's actions. Calling `setStep('menu')` on cancel would match how a failed remove returns to the menu. No functional impact.
+  - ai_reasoning: Fixed: rows are now keyed by `image.uri` (PhotoPreviewScreen.tsx:117), so removal no longer remounts siblings.
 
 ## Reviewed files
+- app.json
 - docs/ARCHITECTURE.md
-- src/app/(app)/saved/_layout.tsx
-- src/app/(app)/saved/collections/[collectionId].tsx
-- src/app/(app)/saved/index.tsx
-- src/bootstrap/PreferencesGate.test.tsx
-- src/bootstrap/PreferencesGate.tsx
-- src/bootstrap/appliedLanguage.ts
-- src/bootstrap/createAppContainer.test.ts
+- jest.setup.ts
+- package-lock.json
+- package.json
+- src/app/(app)/(tabs)/trips/[tripId]/itinerary/[itemId]/photos.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/[photoId].tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/camera.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/index.tsx
+- src/app/(app)/(tabs)/trips/[tripId]/photos/preview.tsx
+- src/app/(app)/(tabs)/trips/_layout.tsx
 - src/bootstrap/createAppContainer.ts
 - src/bootstrap/databaseMigrations.ts
 - src/core/di/AppDependencies.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
+- src/core/i18n/locales/ur.ts
+- src/core/storage/DocumentImageStore.ts
 - src/core/store/store.ts
-- src/features/auth/presentation/screens/RegisterScreen.tsx
-- src/features/discover/presentation/screens/DestinationScreen.tsx
-- src/features/favorites/data/LocalFavoritesRepository.edge.test.ts
-- src/features/favorites/data/LocalFavoritesRepository.test.ts
-- src/features/favorites/data/LocalFavoritesRepository.ts
-- src/features/favorites/data/favoritesMigrations.ts
-- src/features/favorites/di.ts
-- src/features/favorites/domain/Collection.ts
-- src/features/favorites/domain/Favorite.edge.test.ts
-- src/features/favorites/domain/Favorite.test.ts
-- src/features/favorites/domain/Favorite.ts
-- src/features/favorites/domain/collectionValidation.test.ts
-- src/features/favorites/domain/collectionValidation.ts
-- src/features/favorites/domain/favoriteSearch.test.ts
-- src/features/favorites/domain/favoriteSearch.ts
-- src/features/favorites/domain/repositories.ts
-- src/features/favorites/domain/usecases/collectionWrites.test.ts
-- src/features/favorites/domain/usecases/favoriteUseCases.edge.test.ts
-- src/features/favorites/domain/usecases/favoriteUseCases.test.ts
-- src/features/favorites/domain/usecases/favoriteUseCases.ts
-- src/features/favorites/presentation/components/CollectionCard.tsx
-- src/features/favorites/presentation/components/CollectionNameSheet.tsx
-- src/features/favorites/presentation/components/CollectionPickerSheet.tsx
-- src/features/favorites/presentation/components/FavoriteButton.tsx
-- src/features/favorites/presentation/components/SavedPlaceActionsSheet.tsx
-- src/features/favorites/presentation/components/SavedPlaceRow.tsx
-- src/features/favorites/presentation/format.ts
-- src/features/favorites/presentation/hooks/useCollection.ts
-- src/features/favorites/presentation/hooks/useFavoriteToggle.edge.test.tsx
-- src/features/favorites/presentation/hooks/useFavoriteToggle.test.tsx
-- src/features/favorites/presentation/hooks/useFavoriteToggle.ts
-- src/features/favorites/presentation/hooks/useFavorites.ts
-- src/features/favorites/presentation/screens/CollectionDetailsScreen.test.tsx
-- src/features/favorites/presentation/screens/CollectionDetailsScreen.tsx
-- src/features/favorites/presentation/screens/FavoritesScreen.tsx
-- src/features/favorites/presentation/screens/favoritesFlows.edge.test.tsx
-- src/features/favorites/presentation/screens/favoritesFlows.test.tsx
-- src/features/favorites/presentation/screens/saveFromDetails.edge.test.tsx
-- src/features/favorites/presentation/screens/saveFromDetails.test.tsx
-- src/features/favorites/presentation/state/favoritesSlice.edge.test.ts
-- src/features/favorites/presentation/state/favoritesSlice.test.ts
-- src/features/favorites/presentation/state/favoritesSlice.ts
-- src/features/favorites/presentation/state/selectors.ts
-- src/features/itinerary/data/LocalActivityRepository.test.ts
-- src/features/map/presentation/components/PlaceSheet.tsx
-- src/features/saved-places/presentation/screens/SavedPlacesScreen.tsx
+- src/features/budget/data/LocalExpenseRepository.test.ts
+- src/features/itinerary/presentation/screens/ActivityDetailsScreen.tsx
+- src/features/photos/data/ExpoImageProcessor.ts
+- src/features/photos/data/ExpoMediaPermissionService.test.ts
+- src/features/photos/data/ExpoMediaPermissionService.ts
+- src/features/photos/data/ExpoPhotoLibraryPicker.test.ts
+- src/features/photos/data/ExpoPhotoLibraryPicker.ts
+- src/features/photos/data/FileSystemPhotoStore.test.ts
+- src/features/photos/data/FileSystemPhotoStore.ts
+- src/features/photos/data/LocalPhotoRepository.test.ts
+- src/features/photos/data/LocalPhotoRepository.ts
+- src/features/photos/data/photosMigrations.ts
+- src/features/photos/di.ts
+- src/features/photos/domain/Photo.ts
+- src/features/photos/domain/imageValidation.edge.test.ts
+- src/features/photos/domain/imageValidation.test.ts
+- src/features/photos/domain/imageValidation.ts
+- src/features/photos/domain/repositories.ts
+- src/features/photos/domain/usecases/photoUseCases.edge.test.ts
+- src/features/photos/domain/usecases/photoUseCases.test.ts
+- src/features/photos/domain/usecases/photoUseCases.ts
+- src/features/photos/presentation/components/ActivityPhotosSection.tsx
+- src/features/photos/presentation/components/AddPhotoMenu.tsx
+- src/features/photos/presentation/components/CameraCanvas.tsx
+- src/features/photos/presentation/components/MediaPermissionView.tsx
+- src/features/photos/presentation/components/PhotoGrid.tsx
+- src/features/photos/presentation/components/PhotoTile.tsx
+- src/features/photos/presentation/components/PhotosEntryCard.tsx
+- src/features/photos/presentation/components/PhotosStateView.tsx
+- src/features/photos/presentation/format.ts
+- src/features/photos/presentation/hooks/useAddPhotos.ts
+- src/features/photos/presentation/hooks/useMediaPermission.test.tsx
+- src/features/photos/presentation/hooks/useMediaPermission.ts
+- src/features/photos/presentation/hooks/usePhotos.ts
+- src/features/photos/presentation/screens/CameraScreen.tsx
+- src/features/photos/presentation/screens/PhotoGalleryScreen.tsx
+- src/features/photos/presentation/screens/PhotoPreviewScreen.tsx
+- src/features/photos/presentation/screens/PhotoViewerScreen.tsx
+- src/features/photos/presentation/screens/photoFlows.test.tsx
+- src/features/photos/presentation/state/photosSlice.test.ts
+- src/features/photos/presentation/state/photosSlice.ts
+- src/features/photos/presentation/state/selectors.ts
+- src/features/trips/di.ts
+- src/features/trips/domain/usecases/SetTripCover.test.ts
+- src/features/trips/domain/usecases/tripUseCases.ts
+- src/features/trips/presentation/screens/TripScreen.tsx
+- src/features/trips/presentation/state/tripsSlice.ts
 - src/shared/navigation/routes.ts
-- src/shared/ui/icons.test.ts
 - src/shared/ui/icons.ts
-- src/testing/favoritesFixtures.ts
+- src/testing/photoFixtures.ts
 - src/testing/testDependencies.ts
-- .code-reviews/brainx-review.md (deleted in diff; skipped)
-- Test files and docs were skimmed, not reviewed line by line
+- package-lock.json (dependency changes only)

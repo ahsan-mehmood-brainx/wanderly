@@ -5,6 +5,7 @@ import { err, ok, type Result } from '@/core/result';
 import { LocalTripRepository } from '@/features/trips/data/LocalTripRepository';
 import {
   type ImagePickerService,
+  type PickImageOptions,
   type TripCoverStore,
   type TripOwnerProvider,
 } from '@/features/trips/domain/repositories';
@@ -113,5 +114,5 @@ export class FakeTripCoverStore implements TripCoverStore {
 
 export class FakeImagePickerService implements ImagePickerService {
   result: Result<string | null, AppError> = ok(null);
-  readonly pickImage = jest.fn(async () => this.result);
+  readonly pickImage = jest.fn(async (_options?: PickImageOptions) => this.result);
 }

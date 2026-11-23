@@ -55,7 +55,7 @@ src/
 - **Validation.** Data read from storage and API responses is parsed with Zod. For stored data, each field falls back on its own, so one bad value doesn't wipe the rest.
 - **Connectivity and logging.** `ConnectivityService` (expo-network) is observable (`useConnectivity()`). `Logger` has levels, scoped child loggers, secret redaction and pluggable transports (console in every build, `warn`+ in release; Sentry later).
 - **State.** Redux Toolkit holds app state. Server data uses RTK Query (`discoverApi`), whose endpoints call use cases through `queryFn` instead of a `baseQuery`, so HTTP, validation and error mapping stay in the data layer. RTK Query adds per-argument caching, de-duplication and out-of-order protection on top. See [ARCHITECTURE.md § 11](docs/ARCHITECTURE.md#11-discover-and-destination-search).
-- **i18n.** Translation keys are type-checked. Every locale must match the shape of `en.ts`, so a missing or extra key is a compile error. To add a language, add a locale file, add it to `SUPPORTED_LANGUAGES`, and add it to `supportedLocales` in `app.json`.
+- **i18n.** English, Spanish and Urdu. Translation keys are type-checked. Every locale must match the shape of `en.ts`, so a missing or extra key is a compile error. To add a language, add a locale file, add it to `SUPPORTED_LANGUAGES` (and `RTL_LANGUAGES` if it is written right to left), and add it to `supportedLocales` in `app.json`. Urdu lays the app out right to left; see [ARCHITECTURE.md § 18](docs/ARCHITECTURE.md#18-profile-settings-and-localization). **Release blocker:** the Urdu strings in `src/core/i18n/locales/ur.ts` are machine-written. A native speaker must review their meaning (including the privacy wording) and sign off before any release that ships Urdu. The automated tests only check key parity, placeholders and script.
 - **Theming.** Use `useAppTheme()` for colours, spacing, and typography, and don't hard-code colours. The user's theme choice is also applied to native UI through `Appearance.setColorScheme`.
 
 ### Design system
@@ -84,8 +84,9 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 | 2   | Weather: Open-Meteo forecasts on destinations and trips, full forecast screen, offline copy           | Done    |
 | 3   | Nearby places and map: OpenStreetMap places and search, filters, pins, directions                     | Done    |
 | 4   | Trips and itineraries: trips in SQLite; day-by-day itinerary with drag-and-drop, conflicts, progress  | Done    |
-| 5   | Expense tracking                                                                                      | Planned |
+| 5   | Expense tracking: trip budgets, expenses in SQLite, Frankfurter conversion, category and daily charts | Done    |
 | 6   | Favourites                                                                                            | Planned |
+| 6.1 | Profile and settings: local profile, travel stats, currency and notification preferences, Urdu (RTL)  | Done    |
 | 7   | Offline support                                                                                       | Planned |
 | 8   | Observability (Sentry), E2E (Maestro), EAS Build/Update                                               | Planned |
 
@@ -100,6 +101,7 @@ Follow the checklist in [docs/ARCHITECTURE.md § 9](docs/ARCHITECTURE.md#9-addin
 
 | [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) (OpenStreetMap) | Place search on the map | No key. Usage policy: at most 1 request per second, an identifying `User-Agent`, no autocomplete. The app searches only on submit, spaces requests 1 s apart, caches results for 30 min and cools down after a 429. Data is ODbL: the map shows "© OpenStreetMap contributors". |
 | [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (overpass-api.de) | Nearby attractions, restaurants, hotels, museums, parks and landmarks | No key. Fair use: one query at a time. The app sends one query per centre (1.5 km, all categories), at least 2 s apart, caches it for 10 min, filters categories on the device and cools down after a 429. ODbL, attributed on the map. Heavy production traffic needs a self-hosted or commercial endpoint. |
+| [Frankfurter](https://frankfurter.dev/) | Exchange rates for expenses (latest and historical) | No key. Rates are published by the European Central Bank (about 30 currencies, working days only). The app asks only for an expense's pair and date, keeps settled historical rates on the device for good and the latest rate for 6 hours, and every converted expense shows the rate and its date. |
 
 When a feature adds an API, list it here with its licence, attribution requirement, and rate limits, and show the attribution in the app.
 
@@ -109,22 +111,28 @@ The map itself is the platform's own (Apple Maps on iOS, Google Maps on Android,
 
 The `wanderly://` scheme opens:
 
-| Link                                              | Screen                               |
-| ------------------------------------------------- | ------------------------------------ |
-| `wanderly://destinations/<destinationId>`         | Destination                          |
-| `wanderly://search`                               | Search                               |
-| `wanderly://trips/new`                            | Create trip                          |
-| `wanderly://trips/upcoming`                       | Upcoming trips                       |
-| `wanderly://trips/completed`                      | Completed trips                      |
-| `wanderly://trips/<tripId>`                       | Trip                                 |
-| `wanderly://trips/<tripId>/edit`                  | Edit trip                            |
-| `wanderly://trips/<tripId>/itinerary/day/<date>`  | One day of the itinerary             |
-| `wanderly://trips/<tripId>/itinerary/new`         | Add activity                         |
-| `wanderly://trips/<tripId>/itinerary/<itemId>`    | Activity                             |
-| `wanderly://trips/<tripId>/itinerary/<itemId>/edit` | Edit activity                      |
-| `wanderly://destinations/<destinationId>/weather` | Destination forecast                 |
-| `wanderly://trips/<tripId>/weather`               | Forecast where you are (from a trip) |
-| `wanderly://map`                                  | Explore map (iOS and Android)        |
+| Link                                                   | Screen                               |
+| ------------------------------------------------------ | ------------------------------------ |
+| `wanderly://destinations/<destinationId>`              | Destination                          |
+| `wanderly://search`                                    | Search                               |
+| `wanderly://trips/new`                                 | Create trip                          |
+| `wanderly://trips/upcoming`                            | Upcoming trips                       |
+| `wanderly://trips/completed`                           | Completed trips                      |
+| `wanderly://trips/<tripId>`                            | Trip                                 |
+| `wanderly://trips/<tripId>/edit`                       | Edit trip                            |
+| `wanderly://trips/<tripId>/itinerary/day/<date>`       | One day of the itinerary             |
+| `wanderly://trips/<tripId>/itinerary/new`              | Add activity                         |
+| `wanderly://trips/<tripId>/itinerary/<itemId>`         | Activity                             |
+| `wanderly://trips/<tripId>/itinerary/<itemId>/edit`    | Edit activity                        |
+| `wanderly://budget/<tripId>`                           | Trip budget                          |
+| `wanderly://budget/<tripId>/expenses`                  | Expense history                      |
+| `wanderly://budget/<tripId>/expenses/new`              | Add expense                          |
+| `wanderly://budget/<tripId>/expenses/<expenseId>`      | Expense                              |
+| `wanderly://budget/<tripId>/expenses/<expenseId>/edit` | Edit expense                         |
+| `wanderly://budget/<tripId>/breakdown`                 | Spending breakdown                   |
+| `wanderly://destinations/<destinationId>/weather`      | Destination forecast                 |
+| `wanderly://trips/<tripId>/weather`                    | Forecast where you are (from a trip) |
+| `wanderly://map`                                       | Explore map (iOS and Android)        |
 
 Destination ids are `country-<alpha-2>` (`country-pt`), a curated slug (`kyoto`), or `place-<base64url>` for any other Wikipedia place (the payload is `<alpha-2>~<article title>`).
 

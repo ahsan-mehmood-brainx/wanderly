@@ -6,12 +6,15 @@ import { type CoreDependencies } from '@/core/di/CoreDependencies';
 import { createContainer, type Factories, valueFactories } from '@/core/di/createContainer';
 import { type LogContext, type Logger } from '@/core/logging/Logger';
 import { authFactories } from '@/features/auth/di';
+import { budgetFactories } from '@/features/budget/di';
 import { discoverFactories } from '@/features/discover/di';
 import { favoritesFactories } from '@/features/favorites/di';
 import { itineraryFactories } from '@/features/itinerary/di';
 import { mapFactories } from '@/features/map/di';
 import { onboardingFactories } from '@/features/onboarding/di';
+import { photosFactories } from '@/features/photos/di';
 import { preferencesFactories } from '@/features/preferences/di';
+import { profileFactories } from '@/features/profile/di';
 import { tripsFactories } from '@/features/trips/di';
 import { weatherFactories } from '@/features/weather/di';
 
@@ -22,6 +25,13 @@ import { FakeLocationService } from './FakeLocationService';
 import { InMemoryKeyValueStore } from './InMemoryKeyValueStore';
 import { ManualClock, sequentialIds } from './ManualClock';
 import { nodeSqliteDriver } from './nodeSqliteDriver';
+import {
+  FakeImageProcessor,
+  FakeMediaPermissionService,
+  FakePhotoFileStore,
+  FakePhotoLibraryPicker,
+} from './photoFixtures';
+import { FakeProfilePhotoStore } from './profileFixtures';
 import { FakeImagePickerService, FakeTripCoverStore, FakeTripOwnerProvider } from './tripFixtures';
 
 export const TEST_RESTCOUNTRIES_API_KEY = 'test-restcountries-key';
@@ -72,6 +82,9 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     ...tripsFactories,
     ...itineraryFactories,
     ...favoritesFactories,
+    ...budgetFactories,
+    ...profileFactories,
+    ...photosFactories,
     // Tests never read the build environment; a key is present unless a test overrides it with `null`.
     restCountriesApiKey: () => TEST_RESTCOUNTRIES_API_KEY,
     // No native location module in tests; permission starts undetermined.
@@ -82,6 +95,12 @@ export function createTestDependencies(overrides: Partial<AppDependencies> = {})
     // No native file system or photo picker in tests.
     tripCoverStore: () => new FakeTripCoverStore(),
     imagePickerService: () => new FakeImagePickerService(),
+    profilePhotoStore: () => new FakeProfilePhotoStore(),
+    // No native camera, picker, image manipulator or file system in tests; permissions start undetermined.
+    photoFileStore: () => new FakePhotoFileStore(),
+    imageProcessor: () => new FakeImageProcessor(),
+    mediaPermissionService: () => new FakeMediaPermissionService(),
+    photoLibraryPicker: () => new FakePhotoLibraryPicker(),
     ...valueFactories(overrides),
   });
 }

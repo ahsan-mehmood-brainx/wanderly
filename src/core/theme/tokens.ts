@@ -54,6 +54,30 @@ export const typography = {
 
 export type TypographyVariant = keyof typeof typography;
 
+export interface TypographyOptions {
+  /** Joined right-to-left scripts (Urdu): no letter spacing or case transforms, taller lines. */
+  readonly rtlScript: boolean;
+}
+
+/** Nastaliq and Naskh glyphs reach far above and below the Latin baseline; fixed Latin line heights clip them. */
+const RTL_SCRIPT_LINE_HEIGHT_SCALE = 1.35;
+const GRID = 4;
+
+export type TypographyStyle = TextStyle & { readonly fontSize: number; readonly lineHeight: number };
+export type TypographyScale = Readonly<Record<TypographyVariant, TypographyStyle>>;
+
+export function createTypography({ rtlScript }: TypographyOptions): TypographyScale {
+  if (!rtlScript) return typography;
+  const entries = (Object.entries(typography) as [TypographyVariant, TypographyStyle][]).map(
+    ([variant, { letterSpacing: _letterSpacing, textTransform: _textTransform, ...style }]) => {
+      const lineHeight = Math.ceil((style.lineHeight * RTL_SCRIPT_LINE_HEIGHT_SCALE) / GRID) * GRID;
+      // Letter spacing breaks the joins between Arabic-script letters, and case transforms don't apply.
+      return [variant, { ...style, lineHeight, letterSpacing: 0 }] as const;
+    },
+  );
+  return Object.fromEntries(entries) as Record<TypographyVariant, TypographyStyle>;
+}
+
 /** Fixed component dimensions shared across the design system. */
 export const sizes = {
   touchTarget: MIN_TOUCH_TARGET,

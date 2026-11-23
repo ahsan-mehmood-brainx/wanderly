@@ -2,6 +2,7 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit';
 
 import { type AppDependencies } from '@/core/di/AppDependencies';
 import { authReducer } from '@/features/auth/presentation/state/authSlice';
+import { budgetReducer } from '@/features/budget/presentation/state/budgetSlice';
 import { discoverApi } from '@/features/discover/presentation/state/discoverApi';
 import { discoverReducer } from '@/features/discover/presentation/state/discoverSlice';
 import { favoritesReducer } from '@/features/favorites/presentation/state/favoritesSlice';
@@ -9,7 +10,9 @@ import { itineraryReducer } from '@/features/itinerary/presentation/state/itiner
 import { mapApi } from '@/features/map/presentation/state/mapApi';
 import { mapReducer } from '@/features/map/presentation/state/mapSlice';
 import { onboardingReducer } from '@/features/onboarding/presentation/state/onboardingSlice';
+import { photosReducer } from '@/features/photos/presentation/state/photosSlice';
 import { preferencesReducer } from '@/features/preferences/presentation/state/preferencesSlice';
+import { profileReducer } from '@/features/profile/presentation/state/profileSlice';
 import { tripsReducer } from '@/features/trips/presentation/state/tripsSlice';
 import { weatherApi } from '@/features/weather/presentation/state/weatherApi';
 
@@ -25,6 +28,9 @@ const rootReducer = combineReducers({
   trips: tripsReducer,
   itinerary: itineraryReducer,
   favorites: favoritesReducer,
+  budget: budgetReducer,
+  profile: profileReducer,
+  photos: photosReducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;

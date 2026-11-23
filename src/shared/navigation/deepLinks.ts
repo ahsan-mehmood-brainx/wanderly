@@ -86,7 +86,33 @@ export function resolveDeepLink(rawUrl: string): Href | null {
     return tripId ? routes.tripWeather(tripId) : null;
   }
   if (segments[0] === 'trips' && segments[2] === 'itinerary') return resolveItineraryLink(segments);
+  if (segments[0] === 'budget') return resolveBudgetLink(segments);
   return null;
+}
+
+/** Budget screen names that sit beside `[expenseId]`; generated expense ids never take these values. */
+const BUDGET_SCREEN_WORDS: ReadonlySet<string> = new Set(['new']);
+
+/** `/budget/:tripId/…`: the trip's overview, history, breakdown and expense screens. */
+function resolveBudgetLink(segments: readonly string[]): Href | null {
+  const tripId = parseRouteId(segments[1]);
+  if (!tripId) return null;
+  if (segments.length === 2) return routes.tripBudget(tripId);
+  if (segments.length === 3 && segments[2] === 'breakdown') return routes.spendingBreakdown(tripId);
+  if (segments[2] !== 'expenses') return null;
+  if (segments.length === 3) return routes.expenseHistory(tripId);
+  // Checked before the expense pattern: `new` is the add-expense form, not an expense id.
+  if (segments.length === 4 && segments[3] === 'new') return routes.newExpense(tripId);
+  const expenseId = parseExpenseId(segments[3]);
+  if (!expenseId) return null;
+  if (segments.length === 4) return routes.expense(tripId, expenseId);
+  if (segments.length === 5 && segments[4] === 'edit') return routes.editExpense(tripId, expenseId);
+  return null;
+}
+
+function parseExpenseId(segment: string | undefined): string | null {
+  const expenseId = parseRouteId(segment);
+  return expenseId && !BUDGET_SCREEN_WORDS.has(expenseId) ? expenseId : null;
 }
 
 /** Itinerary screen names that sit beside `[itemId]`; generated activity ids never take these values. */

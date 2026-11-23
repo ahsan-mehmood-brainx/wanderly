@@ -40,7 +40,8 @@ const membershipPairs = async (repository: FavoritesRepository, ownerId = TRIP_O
 describe('LocalFavoritesRepository', () => {
   describe('schema', () => {
     it('AC9 is migration 3, after trips and activities', () => {
-      expect(APP_MIGRATIONS.map(({ version }) => version)).toEqual([1, 2, 3]);
+      expect(APP_MIGRATIONS.map(({ version }) => version).slice(0, 3)).toEqual([1, 2, 3]);
+      expect(APP_MIGRATIONS[2]?.name).toMatch(/favorites/);
     });
 
     it('AC9 creates the favorites, collections and membership tables', async () => {

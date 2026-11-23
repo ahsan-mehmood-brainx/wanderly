@@ -1,4 +1,4 @@
-import { ProfileScreen } from '@/features/auth/presentation/screens/ProfileScreen';
+import { ProfileScreen } from '@/features/profile/presentation/screens/ProfileScreen';
 
 export default function ProfileRoute() {
   return <ProfileScreen />;

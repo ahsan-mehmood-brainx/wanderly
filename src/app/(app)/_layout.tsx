@@ -2,6 +2,7 @@ import { usePathname } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { useTranslation } from 'react-i18next';
 
+import { useLayoutDirection } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { AppDrawerContent } from '@/features/shell/presentation/components/AppDrawerContent';
 import { isDrawerSwipeEnabled } from '@/features/shell/presentation/navigation';
@@ -10,6 +11,7 @@ import { isDrawerSwipeEnabled } from '@/features/shell/presentation/navigation';
 export default function MainDrawerLayout() {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
+  const { isRTL } = useLayoutDirection();
   const pathname = usePathname();
 
   return (
@@ -19,6 +21,7 @@ export default function MainDrawerLayout() {
         // Each destination has its own native stack header (with the menu button).
         headerShown: false,
         drawerType: 'front',
+        drawerPosition: isRTL ? 'right' : 'left',
         overlayColor: colors.overlay,
         drawerStyle: { backgroundColor: colors.surface },
         swipeEnabled: isDrawerSwipeEnabled(pathname),

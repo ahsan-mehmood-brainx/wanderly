@@ -1,6 +1,8 @@
 import { type Migration } from '@/core/database/migrations';
+import { BUDGET_MIGRATIONS } from '@/features/budget/data/budgetMigrations';
 import { FAVORITES_MIGRATIONS } from '@/features/favorites/data/favoritesMigrations';
 import { ITINERARY_MIGRATIONS } from '@/features/itinerary/data/itineraryMigrations';
+import { PHOTOS_MIGRATIONS } from '@/features/photos/data/photosMigrations';
 import { TRIP_MIGRATIONS } from '@/features/trips/data/tripMigrations';
 
 export const APP_DATABASE_NAME = 'wanderly.db';
@@ -14,4 +16,6 @@ export const APP_MIGRATIONS: readonly Migration[] = [
   ...TRIP_MIGRATIONS,
   ...ITINERARY_MIGRATIONS,
   ...FAVORITES_MIGRATIONS,
+  ...BUDGET_MIGRATIONS,
+  ...PHOTOS_MIGRATIONS,
 ];

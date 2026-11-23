@@ -1,11 +1,18 @@
 import { useContext, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { getI18n, I18nContext } from 'react-i18next';
+import { StyleSheet, View } from 'react-native';
 
+import { isRtlLanguage, layoutDirectionOf } from '@/core/i18n/languages';
+import { LayoutDirectionProvider } from '@/core/i18n/LayoutDirectionProvider';
 import { useAppDispatch, useAppSelector } from '@/core/store/hooks';
 import { ThemeProvider } from '@/core/theme/ThemeProvider';
 import { applyNativeColorScheme } from '@/features/preferences/presentation/applyNativeColorScheme';
+import { applyNativeLayoutDirection } from '@/features/preferences/presentation/applyNativeLayoutDirection';
 import { useResolvedPreferences } from '@/features/preferences/presentation/hooks/useResolvedPreferences';
-import { loadPreferences } from '@/features/preferences/presentation/state/preferencesSlice';
+import {
+  loadPreferences,
+  nativeLayoutDirectionApplied,
+} from '@/features/preferences/presentation/state/preferencesSlice';
 import { selectPreferences, selectPreferencesReady } from '@/features/preferences/presentation/state/selectors';
 
 import { getAppliedLanguage, setAppliedLanguage } from './appliedLanguage';
@@ -18,8 +25,8 @@ interface PreferencesGateProps {
 
 /**
  * Loads persisted preferences before rendering the app so the first frame is
- * already in the right theme and language (no flash), then keeps theme and
- * language in sync with preference and device changes.
+ * already in the right theme, language and layout direction (no flash), then
+ * keeps them in sync with preference and device changes.
  */
 export function PreferencesGate({ children, onReady }: PreferencesGateProps) {
   const dispatch = useAppDispatch();
@@ -54,11 +61,31 @@ export function PreferencesGate({ children, onReady }: PreferencesGateProps) {
     if (ready) applyNativeColorScheme(theme);
   }, [ready, theme]);
 
+  // Content flips at once through the direction context below; native chrome
+  // (headers, tabs, back gesture) follows after a restart, which Settings explains.
+  useEffect(() => {
+    if (!ready) return;
+    const { restartRequired } = applyNativeLayoutDirection(language);
+    dispatch(nativeLayoutDirectionApplied({ restartRequired }));
+  }, [ready, language, dispatch]);
+
   useEffect(() => {
     if (ready) onReady?.();
   }, [ready, onReady]);
 
   if (!ready) return null;
 
-  return <ThemeProvider scheme={colorScheme}>{children}</ThemeProvider>;
+  const direction = layoutDirectionOf(language);
+
+  return (
+    <LayoutDirectionProvider language={language}>
+      <ThemeProvider scheme={colorScheme} rtlScript={isRtlLanguage(language)}>
+        <View style={[styles.root, { direction }]}>{children}</View>
+      </ThemeProvider>
+    </LayoutDirectionProvider>
+  );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

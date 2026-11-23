@@ -2,9 +2,10 @@ import { AppError } from '@/core/errors/AppError';
 import { MockPreferencesRepository } from '@/testing/MockPreferencesRepository';
 import { createTestLogger } from '@/testing/testDependencies';
 
+import { DEFAULT_PREFERENCES, type Preferences } from '../Preferences';
 import { SavePreferences } from './SavePreferences';
 
-const stored = { theme: 'dark', language: 'es' } as const;
+const stored: Preferences = { ...DEFAULT_PREFERENCES, theme: 'dark', language: 'es' };
 
 function setup(repository = new MockPreferencesRepository(stored)) {
   const logger = createTestLogger();
@@ -16,7 +17,7 @@ describe('SavePreferences', () => {
     const { useCase, repository } = setup();
 
     await expect(useCase.execute({ theme: 'light' })).resolves.toEqual({ ok: true, value: undefined });
-    expect(repository.stored).toEqual({ theme: 'light', language: 'es' });
+    expect(repository.stored).toEqual({ ...stored, theme: 'light', language: 'es' });
   });
 
   it('writes nothing and returns the error when storage cannot be read', async () => {
@@ -38,7 +39,7 @@ describe('SavePreferences', () => {
 
     await Promise.all([useCase.execute({ theme: 'light' }), useCase.execute({ language: 'en' })]);
 
-    expect(repository.stored).toEqual({ theme: 'light', language: 'en' });
+    expect(repository.stored).toEqual({ ...stored, theme: 'light', language: 'en' });
   });
 
   it('keeps saving after an earlier save fails', async () => {
@@ -51,7 +52,23 @@ describe('SavePreferences', () => {
 
     expect((await first).ok).toBe(false);
     expect((await second).ok).toBe(true);
-    expect(repository.stored).toEqual({ theme: 'dark', language: 'en' });
+    expect(repository.stored).toEqual({ ...stored, theme: 'dark', language: 'en' });
+  });
+
+  it('TC-10 keeps the other preferences when currency and notifications change', async () => {
+    const { useCase, repository } = setup();
+
+    await Promise.all([
+      useCase.execute({ currency: 'EUR' }),
+      useCase.execute({ notifications: { tripReminders: true, budgetAlerts: false } }),
+    ]);
+
+    expect(repository.stored).toEqual({
+      theme: 'dark',
+      language: 'es',
+      currency: 'EUR',
+      notifications: { tripReminders: true, budgetAlerts: false },
+    });
   });
 
   it('returns and logs a repository error', async () => {
