@@ -1,15 +1,19 @@
 import { z } from 'zod';
 
-import { type SqlDatabase, type SqlValue } from '@/core/database/SqlDatabase';
+import { type SqlDatabase, type SqlExecutor, type SqlValue } from '@/core/database/SqlDatabase';
 import { AppError } from '@/core/errors/AppError';
 import { type Logger } from '@/core/logging/Logger';
 import { err, ok, type Result } from '@/core/result';
+import { type LocalChangeKind, type LocalChangeLog, NO_CHANGE_LOG } from '@/core/sync/LocalChange';
 import { isLocalDate } from '@/features/trips/domain/localDate';
 import { isCurrencyCode } from '@/features/trips/domain/money';
 
 import { RATE_SOURCES } from '../domain/ExchangeRate';
 import { EXPENSE_CATEGORIES, type Expense, PAYMENT_METHODS } from '../domain/Expense';
 import { type ExpenseConversionUpdate, type ExpenseRepository } from '../domain/repositories';
+
+/** Entity type in the sync outbox. */
+export const EXPENSE_SYNC_ENTITY = 'expense';
 
 const COLUMNS = `id, trip_id, title, amount_minor, currency, base_currency, base_amount_minor, exchange_rate,
   rate_date, rate_source, category, date, payment_method, notes, created_at, updated_at`;
@@ -97,11 +101,14 @@ function editableValues(expense: Expense): SqlValue[] {
 /**
  * Expenses in the on-device SQLite database. No network is involved in any operation.
  * Every statement is limited to `owner_id`, so one account can't read or change another's expenses.
+ * Creates, edits and deletes are recorded in the sync outbox in the same transaction. Conversions
+ * (`updateConversions`) are not: every device derives them from the expense and the shared rate cache.
  */
 export class LocalExpenseRepository implements ExpenseRepository {
   constructor(
     private readonly database: SqlDatabase,
     private readonly logger: Logger,
+    private readonly changeLog: LocalChangeLog = NO_CHANGE_LOG,
   ) {}
 
   listByTrip(ownerId: string, tripId: string): Promise<Result<readonly Expense[], AppError>> {
@@ -126,25 +133,31 @@ export class LocalExpenseRepository implements ExpenseRepository {
   }
 
   insert(ownerId: string, expense: Expense): Promise<Result<void, AppError>> {
-    return this.attempt('save the expense', async () => {
-      await this.database.run(
-        `INSERT INTO expenses (owner_id, ${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ownerId, expense.id, expense.tripId, ...editableValues(expense), expense.createdAt, expense.updatedAt],
-      );
-    });
+    return this.attempt('save the expense', () =>
+      this.database.transaction(async (tx) => {
+        await tx.run(
+          `INSERT INTO expenses (owner_id, ${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [ownerId, expense.id, expense.tripId, ...editableValues(expense), expense.createdAt, expense.updatedAt],
+        );
+        await this.record(tx, ownerId, expense.id, 'create');
+      }),
+    );
   }
 
   async update(ownerId: string, expense: Expense): Promise<Result<void, AppError>> {
-    const updated = await this.attempt('update the expense', async () => {
-      const { changes } = await this.database.run(
-        `UPDATE expenses SET title = ?, amount_minor = ?, currency = ?, base_currency = ?, base_amount_minor = ?,
+    const updated = await this.attempt('update the expense', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run(
+          `UPDATE expenses SET title = ?, amount_minor = ?, currency = ?, base_currency = ?, base_amount_minor = ?,
            exchange_rate = ?, rate_date = ?, rate_source = ?, category = ?, date = ?, payment_method = ?, notes = ?,
            updated_at = ?
          WHERE id = ? AND owner_id = ?`,
-        [...editableValues(expense), expense.updatedAt, expense.id, ownerId],
-      );
-      return changes > 0;
-    });
+          [...editableValues(expense), expense.updatedAt, expense.id, ownerId],
+        );
+        if (changes > 0) await this.record(tx, ownerId, expense.id, 'update');
+        return changes > 0;
+      }),
+    );
     return this.requireFound(updated, expense.id);
   }
 
@@ -183,11 +196,18 @@ export class LocalExpenseRepository implements ExpenseRepository {
   }
 
   async delete(ownerId: string, id: string): Promise<Result<void, AppError>> {
-    const deleted = await this.attempt('delete the expense', async () => {
-      const { changes } = await this.database.run('DELETE FROM expenses WHERE id = ? AND owner_id = ?', [id, ownerId]);
-      return changes > 0;
-    });
+    const deleted = await this.attempt('delete the expense', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run('DELETE FROM expenses WHERE id = ? AND owner_id = ?', [id, ownerId]);
+        if (changes > 0) await this.record(tx, ownerId, id, 'delete');
+        return changes > 0;
+      }),
+    );
     return this.requireFound(deleted, id);
+  }
+
+  private record(tx: SqlExecutor, ownerId: string, entityId: string, kind: LocalChangeKind) {
+    return this.changeLog.record(tx, { ownerId, entityType: EXPENSE_SYNC_ENTITY, entityId, kind });
   }
 
   private requireFound(result: Result<boolean, AppError>, id: string): Result<void, AppError> {

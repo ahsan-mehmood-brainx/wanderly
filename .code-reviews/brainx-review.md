@@ -1,103 +1,121 @@
 ---
-diff_hash: 3fb2d238cc50d025362d146336b48229db43666646e0c61fae4e6bd0d1b869e5
-reviewed_at: 2026-11-22T18:35:59Z
+diff_hash: f025662d4afabce85b2957421771fdc7b016a5dcaceae0ae81bd3f4d26317ea4
+reviewed_at: 2026-11-23T18:26:49Z
 ---
 
 ## Summary
 
-Adds the photos feature (feature 09/photos): camera capture and library picking, JPEG re-encoding to app storage, a `photos` SQLite table (migration 5, owner-scoped queries), gallery/viewer/preview screens, trip cover from a gallery photo (`SetTripCover`), orphan file pruning, and en/es/ur strings. Stack: React (Expo / React Native). Ownership checks, reference-pattern validation, cleanup on partial failure and permission handling look sound. Three minor findings.
+Fresh review of all staged changes (71 files, `git add -A` already applied; `git diff --cached` hash above). This supersedes the notifications-only review of 2026-11-23T18:04:39Z, because the staged diff has changed since then. Stack: React (Expo / React Native; `react` in dependencies, no NestJS marker). Single repository with staged changes.
+
+What changed: local notifications for trip reminders, trip-start reminders, activity reminders and budget alerts (`src/features/notifications/`), with expo-notifications, expo-background-task and expo-task-manager added (SDK 58 versions, config plugins in `app.json`). Sign-out and session expiry clear every Wanderly notification from the root navigator, so a launch with an expired session is covered. Reconcile passes the session's preferences, Android channel names follow the reminders' language, notification taps go through the deep-link allow-list with an owner check, and the Reminder times screen and Settings permission row are added. Also: `OptionGroup` `focusableGroup` mode, en/es/ur strings and the architecture doc.
+
+Results of the previous findings: all four are fixed. The sign-out clear now runs at the root and has a test for a launch with an expired session. Both reconcile call sites pass session preferences. Channel names are localized. The reminder time is interpolated into the copy.
+
+Verification run for this review: `npx tsc --noEmit` exit 0; `npx expo lint` exit 0; `npx jest src/features/notifications src/bootstrap src/features/preferences src/shared/ui` 49 suites and 449 tests passed.
+
+Not verified here: behaviour on a device or simulator (permission prompts, background task scheduling, notification delivery), which needs a development build. The non-test source (about 2,900 lines) was read in full. Test files were not read line by line, except the notifications-while-signed-out block in `RootNavigator.test.tsx`; they pass. `package-lock.json` was not reviewed beyond the dependency lines in `package.json`. The React criteria are web-oriented; they were applied where they fit (hook rules, effect cleanup, state and error handling), and the React Native specifics were reviewed against the Expo and React Native APIs in use.
 
 ## Findings
 
 ### Critical (0)
 
-### High (0)
+### High (1)
+- **src/bootstrap/RootNavigator.tsx:49** — Notifications are cleared from the root navigator on every unauthenticated state, including a launch that finds the session expired (previously cleared only from the signed-in layout, which an expired launch never mounts). *(correctness / privacy)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. `useClearNotificationsWhenSignedOut()` runs at the root and clears whenever `selectAuthStatus` is `unauthenticated`. `restoreSession.fulfilled` with a non-signed-in result calls `signedOut()`, which sets that status, so an expired or unreadable session at launch also clears. The auth status starts as `idle`, so the clear does not fire before the restore finishes. `RootNavigator.test.tsx` "clears the last account's notifications when a launch finds the session expired" covers this path.
 
 ### Medium (1)
-- **src/features/photos/presentation/hooks/usePhotos.ts:91** — `items` calls `photoFileStore.exists()` (a synchronous file-system stat) for every photo inside a `useMemo` that recomputes whenever `activities`, `photos` or the store change. With up to 200 photos per trip this blocks the JS thread on each recompute. *(performance)*
+- **src/features/notifications/presentation/hooks/useNotificationSettings.ts:69** — Reconcile was started without the session's preferences from the Settings screens (`reconcileNotifications.execute({ trigger: 'settings' })`), so it could plan against stored preferences while a master-switch save was pending or had failed. *(consistency / correctness)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: existence results are now cached per reference in a store-keyed map (usePhotos.ts:37-99), so each file is stat-ed once instead of on every recompute.
+  - ai_reasoning: Fixed. Both call sites now go through `useSessionReconcile`, which passes the session preferences from the store (`useNotificationSettings.ts:69`, `useNotificationPermissionSetting.ts:76`). The calls without preferences are gone.
 
 ### Low (2)
-- **src/features/photos/domain/usecases/photoUseCases.ts:158** — The per-trip photo cap is enforced by a read-then-insert (`countByTrip` then `insertMany`) with no atomic guard, so two overlapping attaches could exceed `MAX_PHOTOS_PER_TRIP`. *(correctness)*
-  - status: fixed
-  - dev_reasoning: The cap is already authoritative in LocalPhotoRepository.insertMany, whose INSERT only runs when `(SELECT COUNT(*) FROM photos WHERE owner_id = ? AND trip_id = ?) < MAX_PHOTOS_PER_TRIP`, inside a transaction. The countByTrip in AttachPhotos is only an early, friendly rejection. Added a repository test that proves a second attach is refused at the cap.
-  - ai_reasoning: Still present: countByTrip then insertMany is unchanged. The UI blocks concurrent changes via `changeRequestId`, so impact is minimal; a count condition in the INSERT would make the limit authoritative.
-- **src/features/photos/presentation/screens/PhotoPreviewScreen.tsx:121** — Preview items are keyed by `${index}-${image.uri}`; removing an item shifts indices and remounts every following row. *(maintainability)*
+- **src/features/notifications/data/ExpoNotificationService.ts** — Android channel names were hard-coded English. *(consistency / i18n)*
   - status: fixed
   - dev_reasoning: N/A
-  - ai_reasoning: Fixed: rows are now keyed by `image.uri` (PhotoPreviewScreen.tsx:117), so removal no longer remounts siblings.
+  - ai_reasoning: Fixed. Reconcile (`notificationUseCases.ts:210`) and the permission request (`notificationUseCases.ts:419`) pass `text.channelNames(language)`. The adapter renames the channels when the names change. The English defaults only apply before the first reconcile, and that run sets the names before anything is scheduled.
+- **src/core/i18n/locales/en.ts:1072** — "9:00" was hard-coded in the reminder copy in en, es and ur, duplicating `REMINDER_HOUR`. *(maintainability)*
+  - status: fixed
+  - dev_reasoning: N/A
+  - ai_reasoning: Fixed. The intro and trip-start hint interpolate `{{time}}`, and `NotificationSettingsScreen` fills it from `REMINDER_HOUR` through `formatTime`, which gives "9:00 AM" in 12-hour locales. All three locales carry the parameter.
+
+### New Low (1)
+- **src/features/notifications/domain/repositories.ts:18** — `DeviceTimeZone.id()` is declared on the port and implemented by `SystemDeviceTimeZone` (`SystemDeviceTimeZone.ts:8`), but no production code calls it; only `SystemDeviceTimeZone.edge.test.ts` does. *(maintainability)*
+  - status: fixed
+  - dev_reasoning: Removed `id()` from the `DeviceTimeZone` port, `SystemDeviceTimeZone`, the `FixedOffsetTimeZone` test fixture and the "AC8 names a zone" test. No production code needed the zone name. `tsc --noEmit` and `expo lint` exit 0; `jest src/features/notifications src/bootstrap` 29 suites, 295 tests pass.
+  - ai_reasoning: A search under `src/features/notifications` finds no production caller of `.id()`. The method is dead port surface that can drift from the real zone handling, with no functional impact today. Either remove it from the port, the adapter and its test, or use it where the zone matters (for example in a debug log of reminder planning).
 
 ## Reviewed files
+- .code-reviews/brainx-review.md (replaced by this review)
 - app.json
-- docs/ARCHITECTURE.md
+- docs/ARCHITECTURE.md (notifications and preferences sections read)
 - jest.setup.ts
-- package-lock.json
+- package-lock.json (not reviewed; dependency lines checked against package.json)
 - package.json
-- src/app/(app)/(tabs)/trips/[tripId]/itinerary/[itemId]/photos.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/[photoId].tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/camera.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/index.tsx
-- src/app/(app)/(tabs)/trips/[tripId]/photos/preview.tsx
-- src/app/(app)/(tabs)/trips/_layout.tsx
+- src/app/(app)/(tabs)/profile/_layout.tsx
+- src/app/(app)/(tabs)/profile/notifications.tsx
+- src/app/(app)/_layout.tsx
+- src/app/_layout.tsx
+- src/bootstrap/RootNavigator.tsx
+- src/bootstrap/RootNavigator.test.tsx (notifications-while-signed-out block read; rest skimmed)
+- src/bootstrap/backgroundTasks.ts
+- src/bootstrap/backgroundTasks.test.ts (skimmed)
 - src/bootstrap/createAppContainer.ts
-- src/bootstrap/databaseMigrations.ts
+- src/bootstrap/notificationTaps.test.tsx (skimmed)
 - src/core/di/AppDependencies.ts
 - src/core/i18n/locales/en.ts
 - src/core/i18n/locales/es.ts
 - src/core/i18n/locales/ur.ts
-- src/core/storage/DocumentImageStore.ts
-- src/core/store/store.ts
-- src/features/budget/data/LocalExpenseRepository.test.ts
-- src/features/itinerary/presentation/screens/ActivityDetailsScreen.tsx
-- src/features/photos/data/ExpoImageProcessor.ts
-- src/features/photos/data/ExpoMediaPermissionService.test.ts
-- src/features/photos/data/ExpoMediaPermissionService.ts
-- src/features/photos/data/ExpoPhotoLibraryPicker.test.ts
-- src/features/photos/data/ExpoPhotoLibraryPicker.ts
-- src/features/photos/data/FileSystemPhotoStore.test.ts
-- src/features/photos/data/FileSystemPhotoStore.ts
-- src/features/photos/data/LocalPhotoRepository.test.ts
-- src/features/photos/data/LocalPhotoRepository.ts
-- src/features/photos/data/photosMigrations.ts
-- src/features/photos/di.ts
-- src/features/photos/domain/Photo.ts
-- src/features/photos/domain/imageValidation.edge.test.ts
-- src/features/photos/domain/imageValidation.test.ts
-- src/features/photos/domain/imageValidation.ts
-- src/features/photos/domain/repositories.ts
-- src/features/photos/domain/usecases/photoUseCases.edge.test.ts
-- src/features/photos/domain/usecases/photoUseCases.test.ts
-- src/features/photos/domain/usecases/photoUseCases.ts
-- src/features/photos/presentation/components/ActivityPhotosSection.tsx
-- src/features/photos/presentation/components/AddPhotoMenu.tsx
-- src/features/photos/presentation/components/CameraCanvas.tsx
-- src/features/photos/presentation/components/MediaPermissionView.tsx
-- src/features/photos/presentation/components/PhotoGrid.tsx
-- src/features/photos/presentation/components/PhotoTile.tsx
-- src/features/photos/presentation/components/PhotosEntryCard.tsx
-- src/features/photos/presentation/components/PhotosStateView.tsx
-- src/features/photos/presentation/format.ts
-- src/features/photos/presentation/hooks/useAddPhotos.ts
-- src/features/photos/presentation/hooks/useMediaPermission.test.tsx
-- src/features/photos/presentation/hooks/useMediaPermission.ts
-- src/features/photos/presentation/hooks/usePhotos.ts
-- src/features/photos/presentation/screens/CameraScreen.tsx
-- src/features/photos/presentation/screens/PhotoGalleryScreen.tsx
-- src/features/photos/presentation/screens/PhotoPreviewScreen.tsx
-- src/features/photos/presentation/screens/PhotoViewerScreen.tsx
-- src/features/photos/presentation/screens/photoFlows.test.tsx
-- src/features/photos/presentation/state/photosSlice.test.ts
-- src/features/photos/presentation/state/photosSlice.ts
-- src/features/photos/presentation/state/selectors.ts
-- src/features/trips/di.ts
-- src/features/trips/domain/usecases/SetTripCover.test.ts
-- src/features/trips/domain/usecases/tripUseCases.ts
-- src/features/trips/presentation/screens/TripScreen.tsx
-- src/features/trips/presentation/state/tripsSlice.ts
+- src/core/store/hooks.ts
+- src/features/notifications/data/ExpoBackgroundRefreshService.ts
+- src/features/notifications/data/ExpoBackgroundRefreshService.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationResponses.ts
+- src/features/notifications/data/ExpoNotificationService.ts
+- src/features/notifications/data/ExpoNotificationService.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationService.dismiss.test.ts (skimmed)
+- src/features/notifications/data/ExpoNotificationService.edge.test.ts (skimmed)
+- src/features/notifications/data/I18nNotificationText.ts
+- src/features/notifications/data/I18nNotificationText.test.ts (skimmed)
+- src/features/notifications/data/StorageNotificationRepository.ts
+- src/features/notifications/data/StorageNotificationRepository.test.ts (skimmed)
+- src/features/notifications/data/StorageNotificationRepository.alertsOwner.test.ts (skimmed)
+- src/features/notifications/data/SystemDeviceTimeZone.ts
+- src/features/notifications/data/SystemDeviceTimeZone.edge.test.ts (skimmed)
+- src/features/notifications/di.ts
+- src/features/notifications/domain/Notification.ts
+- src/features/notifications/domain/NotificationSettings.ts
+- src/features/notifications/domain/budgetAlerts.ts
+- src/features/notifications/domain/budgetAlerts.test.ts (skimmed)
+- src/features/notifications/domain/budgetAlerts.edge.test.ts (skimmed)
+- src/features/notifications/domain/reminderPlanning.ts
+- src/features/notifications/domain/reminderPlanning.test.ts (skimmed)
+- src/features/notifications/domain/reminderPlanning.edge.test.ts (skimmed)
+- src/features/notifications/domain/repositories.ts
+- src/features/notifications/domain/usecases/notificationUseCases.ts
+- src/features/notifications/domain/usecases/notificationUseCases.test.ts (skimmed)
+- src/features/notifications/domain/usecases/notificationUseCases.edge.test.ts (skimmed)
+- src/features/notifications/domain/usecases/notificationSession.test.ts (skimmed)
+- src/features/notifications/domain/usecases/backgroundReconcileSignOut.edge.test.ts (skimmed)
+- src/features/notifications/presentation/hooks/useClearNotificationsWhenSignedOut.ts
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.ts
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationLifecycle.preferences.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationPermissionSetting.ts
+- src/features/notifications/presentation/hooks/useNotificationPermissionSetting.edge.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationResponses.ts
+- src/features/notifications/presentation/hooks/useNotificationResponses.edge.test.tsx (skimmed)
+- src/features/notifications/presentation/hooks/useNotificationSettings.ts
+- src/features/notifications/presentation/hooks/useSessionReconcile.ts
+- src/features/notifications/presentation/notificationRouting.ts
+- src/features/notifications/presentation/notificationRouting.test.ts (skimmed)
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.tsx
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.test.tsx (skimmed)
+- src/features/notifications/presentation/screens/NotificationSettingsScreen.edge.test.tsx (skimmed)
+- src/features/preferences/presentation/screens/SettingsScreen.tsx
+- src/features/preferences/presentation/screens/SettingsScreen.test.tsx (skimmed)
 - src/shared/navigation/routes.ts
-- src/shared/ui/icons.ts
-- src/testing/photoFixtures.ts
-- src/testing/testDependencies.ts
-- package-lock.json (dependency changes only)
+- src/shared/ui/OptionGroup.tsx
+- src/testing/notificationFixtures.ts (skimmed)
+- src/testing/testDependencies.ts (skimmed)

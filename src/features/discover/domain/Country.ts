@@ -50,6 +50,11 @@ export interface Country {
   readonly landlocked: boolean | null;
   /** Title of the country's English Wikipedia article, when the API links one ("Georgia (country)"). */
   readonly wikipediaTitle: string | null;
+  /**
+   * Set only when this is the copy saved on the device, shown because it couldn't be
+   * refreshed (offline, API failing): when it was downloaded, in epoch ms.
+   */
+  readonly savedAt?: number;
 }
 
 export const primaryCapital = (country: Pick<Country, 'capitals'>): string | null => country.capitals[0] ?? null;

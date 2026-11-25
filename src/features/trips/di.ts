@@ -52,7 +52,7 @@ export const tripsFactories: Factories<
   TripsDependencies,
   CoreDependencies & Pick<AuthDependencies, 'sessionManager'> & TripsDependencies
 > = {
-  tripRepository: (c) => new LocalTripRepository(c.database, c.logger.child({ scope: 'trips' })),
+  tripRepository: (c) => new LocalTripRepository(c.database, c.logger.child({ scope: 'trips' }), c.localChangeLog),
   tripOwnerProvider: (c) => new SessionTripOwnerProvider(c.sessionManager),
   tripCoverStore: (c) =>
     Platform.OS === 'web'

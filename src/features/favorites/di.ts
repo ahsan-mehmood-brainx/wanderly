@@ -43,7 +43,8 @@ export const favoritesFactories: Factories<
   FavoritesDependencies,
   CoreDependencies & Pick<TripsDependencies, 'tripOwnerProvider'> & FavoritesDependencies
 > = {
-  favoritesRepository: (c) => new LocalFavoritesRepository(c.database, c.logger.child({ scope: 'favorites' })),
+  favoritesRepository: (c) =>
+    new LocalFavoritesRepository(c.database, c.logger.child({ scope: 'favorites' }), c.localChangeLog),
   getFavorites: (c) => new GetFavorites(c.favoritesRepository, c.tripOwnerProvider, c.clock),
   saveFavorite: (c) => new SaveFavorite(c.favoritesRepository, c.tripOwnerProvider, c.clock, c.idGenerator),
   removeFavorite: (c) => new RemoveFavorite(c.favoritesRepository, c.tripOwnerProvider),

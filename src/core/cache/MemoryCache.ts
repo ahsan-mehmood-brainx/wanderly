@@ -2,17 +2,23 @@ import { AppError, toAppError } from '@/core/errors/AppError';
 import { err, type Result } from '@/core/result';
 import { type Clock } from '@/core/utils/Clock';
 
-export interface MemoryCacheOptions {
+export interface MemoryCacheOptions<T = unknown> {
   readonly ttlMs: number;
   /** Oldest entries are evicted beyond this. */
   readonly maxEntries: number;
   readonly clock: Clock;
+  /**
+   * Successes for which this returns false are returned but not kept, e.g. a saved
+   * copy shown because a refresh failed, which must not hide the next refresh.
+   */
+  readonly shouldCache?: (value: T) => boolean;
 }
 
 /**
  * Small TTL + LRU cache for `Result`-returning loads, with request coalescing.
  *
- * - Only successes are cached, so a failure (offline, rate limited) is retried next time.
+ * - Only successes are cached (and only those `shouldCache` accepts), so a failure
+ *   (offline, rate limited) is retried next time.
  * - Concurrent loads of the same key share one request. The shared request is not
  *   tied to any caller's `AbortSignal`: if one caller cancels, it gets `cancelled`
  *   while the request completes for the others and fills the cache.
@@ -21,7 +27,7 @@ export class MemoryCache<T> {
   private readonly entries = new Map<string, { readonly value: T; readonly expiresAt: number }>();
   private readonly inFlight = new Map<string, Promise<Result<T, AppError>>>();
 
-  constructor(private readonly options: MemoryCacheOptions) {}
+  constructor(private readonly options: MemoryCacheOptions<T>) {}
 
   async get(key: string, load: () => Promise<Result<T, AppError>>, signal?: AbortSignal): Promise<Result<T, AppError>> {
     if (signal?.aborted) return err(cancelled());
@@ -40,7 +46,7 @@ export class MemoryCache<T> {
       pending = load().then(
         (result) => {
           this.inFlight.delete(key);
-          if (result.ok) this.store(key, result.value);
+          if (result.ok && (this.options.shouldCache?.(result.value) ?? true)) this.store(key, result.value);
           return result;
         },
         // Loaders return Results by contract; a throw must still not leave a stuck in-flight entry.

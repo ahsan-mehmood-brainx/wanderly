@@ -43,13 +43,15 @@ src/
   core/                      Cross-cutting infrastructure; knows no feature (except the DI type aggregate)
     config/                    AppConfig (env-derived settings)
     database/                  SqlDatabase port, SqliteDatabase (queue, transactions), migrations, expo-sqlite driver
+    cache/                     MemoryCache, PersistentCache + CacheStore (SQLite `cache_entries`) for offline copies
+    sync/                      LocalChangeLog, outbox (SQLite `sync_outbox`), coalescing, retry policy, SyncGateway, SyncEngine
     di/                        createContainer, CoreDependencies, AppDependencies, DependenciesProvider
     errors/                    AppError taxonomy, error → i18n message mapping
     events/                    Subject / Observable (Observer pattern)
     http/                      HttpClient facade, axios adapter, interceptors, error normalisation,
                                auth & retry strategies, HttpClientFactory
     logging/                   Logger port, AppLogger, log transports
-    network/                   ConnectivityService port + expo-network adapter
+    network/                   ConnectivityService port + NetInfo adapter
     storage/                   KeyValueStore port + AsyncStorage adapter
     store/                     Redux store factory, typed hooks, createAppAsyncThunk
     usecase/                   UseCase<TInput, TOutput> interface
@@ -200,7 +202,7 @@ useEffect(() => {
 
 ### Offline
 
-`ConnectivityService` (backed by `expo-network`) is observable. Only `isConnected === false` counts as offline, because `isInternetReachable` gives false negatives on some networks. The HTTP client reads the snapshot to fail fast. UI uses `useConnectivity()`, which re-renders only on change.
+`ConnectivityService` (backed by `@react-native-community/netinfo`) is observable. Only `isConnected === false` counts as offline, because `isInternetReachable` gives false negatives on some networks. The HTTP client reads the snapshot to fail fast. UI uses `useConnectivity()`, which re-renders only on change.
 
 ### Security notes
 
@@ -218,16 +220,16 @@ useEffect(() => {
 
 ## 6. Design patterns: where and why
 
-| Pattern                          | Where                                                                                                                                                                | Why it's used here                                                                                                                                                                                                                                                               |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Repository**                   | `PreferencesRepository` → `StoragePreferencesRepository`; future `XRepository` → `HttpXRepository`                                                                   | Domain logic asks for data in domain terms and doesn't care whether it comes from AsyncStorage, an API, or a cache. Swapping the source (e.g. adding offline caching in feature 7) changes one class, and use cases are tested with in-memory repositories.                      |
-| **Dependency Injection**         | `createContainer`, feature `di.ts` modules, thunk `extra`, `useDependencies`                                                                                         | Classes receive collaborators instead of constructing them. This is what makes every layer testable without network or storage, and keeps concrete choices in one place (the composition root).                                                                                  |
-| **Factory**                      | `HttpClientFactory.create(apiDefinition)`; DI factories (`Factories<T>`); `createAppContainer`, `createAppStore`, `createI18n`                                       | Building an HTTP client is non-trivial (base URL, timeout, interceptors, auth, retry). A factory lets features describe _what_ they need while the factory owns _how_ it's assembled. The test factory returns fakes with no other change.                                       |
-| **Strategy**                     | `RetryStrategy` (`ExponentialBackoffRetry`, `noRetry`), `AuthStrategy` (`noAuth`, `ApiKeyAuth`, `BearerTokenAuth`), `LogTransport`                                   | Public travel APIs differ in how keys are sent and how retries should behave, and log destinations differ by environment. The algorithm (retry loop, interceptor pipeline, logger) stays fixed, and behaviour varies by plugging in a strategy, per API or per request.          |
-| **Adapter**                      | `AxiosHttpClient` (axios → `HttpClient`), `ExpoNetworkConnectivityService` (expo-network → `ConnectivityService`), `AsyncStorageKeyValueStore`, DTO → entity mappers | Third-party APIs are wrapped behind interfaces the app owns. axios or expo-network could be replaced without touching features, and API field names stay out of the domain.                                                                                                      |
-| **Facade**                       | `HttpClient` (`get/post/put/patch/delete` → `Result`)                                                                                                                | Repositories see five verbs and a Result. Interceptors, auth, retries, timeouts, cancellation, validation and error mapping are hidden behind it, so network code stays short and consistent.                                                                                    |
-| **Observer**                     | `Subject`/`Observable`; `ConnectivityService.subscribe`; `useConnectivity` (`useSyncExternalStore`); Redux store subscriptions                                       | Connectivity changes are pushed to interested parties (UI, HTTP guard) instead of being polled. Listeners are isolated, so one throwing listener can't break the others.                                                                                                         |
-| **Singleton** (container-scoped) | Every service in the app container; one container per app run                                                                                                        | Services such as the logger, HTTP clients and connectivity listener must exist once (shared state, one native listener). This is done by container lifetime rather than global `getInstance()`, because global singletons are hidden dependencies that leak state between tests. |
+| Pattern                          | Where                                                                                                                                                       | Why it's used here                                                                                                                                                                                                                                                               |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Repository**                   | `PreferencesRepository` → `StoragePreferencesRepository`; future `XRepository` → `HttpXRepository`                                                          | Domain logic asks for data in domain terms and doesn't care whether it comes from AsyncStorage, an API, or a cache. Swapping the source (e.g. the offline caching of § 20) changes one class, and use cases are tested with in-memory repositories.                              |
+| **Dependency Injection**         | `createContainer`, feature `di.ts` modules, thunk `extra`, `useDependencies`                                                                                | Classes receive collaborators instead of constructing them. This is what makes every layer testable without network or storage, and keeps concrete choices in one place (the composition root).                                                                                  |
+| **Factory**                      | `HttpClientFactory.create(apiDefinition)`; DI factories (`Factories<T>`); `createAppContainer`, `createAppStore`, `createI18n`                              | Building an HTTP client is non-trivial (base URL, timeout, interceptors, auth, retry). A factory lets features describe _what_ they need while the factory owns _how_ it's assembled. The test factory returns fakes with no other change.                                       |
+| **Strategy**                     | `RetryStrategy` (`ExponentialBackoffRetry`, `noRetry`), `AuthStrategy` (`noAuth`, `ApiKeyAuth`, `BearerTokenAuth`), `LogTransport`                          | Public travel APIs differ in how keys are sent and how retries should behave, and log destinations differ by environment. The algorithm (retry loop, interceptor pipeline, logger) stays fixed, and behaviour varies by plugging in a strategy, per API or per request.          |
+| **Adapter**                      | `AxiosHttpClient` (axios → `HttpClient`), `NetInfoConnectivityService` (NetInfo → `ConnectivityService`), `AsyncStorageKeyValueStore`, DTO → entity mappers | Third-party APIs are wrapped behind interfaces the app owns. axios or NetInfo could be replaced without touching features, and API field names stay out of the domain.                                                                                                           |
+| **Facade**                       | `HttpClient` (`get/post/put/patch/delete` → `Result`)                                                                                                       | Repositories see five verbs and a Result. Interceptors, auth, retries, timeouts, cancellation, validation and error mapping are hidden behind it, so network code stays short and consistent.                                                                                    |
+| **Observer**                     | `Subject`/`Observable`; `ConnectivityService.subscribe`; `useConnectivity` (`useSyncExternalStore`); Redux store subscriptions                              | Connectivity changes are pushed to interested parties (UI, HTTP guard) instead of being polled. Listeners are isolated, so one throwing listener can't break the others.                                                                                                         |
+| **Singleton** (container-scoped) | Every service in the app container; one container per app run                                                                                               | Services such as the logger, HTTP clients and connectivity listener must exist once (shared state, one native listener). This is done by container lifetime rather than global `getInstance()`, because global singletons are hidden dependencies that leak state between tests. |
 
 Also used: **Result type** (errors as values at layer boundaries), **Template Method** (`BaseHttpClient` implements the verbs once over `request`, for the real and fake clients), and **Chain of Responsibility** (the axios interceptor pipeline).
 
@@ -748,7 +750,7 @@ data          StoragePreferencesRepository (preferences.v1) · StorageLocalProfi
 
 ### Preferences
 
-`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. Wanderly doesn't send notifications yet, so the switches only save a choice, and Settings says so.
+`preferences.v1` keeps its key. `currency` (`'system'` or a `TRIP_CURRENCIES` code) and `notifications` (`tripReminders` and `budgetAlerts`, both off by default) were added with a zod `.catch` on each field. Preferences stored before this feature load with the new defaults, and one corrupt field never discards the others. The currency preference only sets the preselected currency on the New Trip form (`useTripForm`, through `resolveCurrency`). `'system'` uses the device region's currency when trips offer it, otherwise USD. Existing trips and budgets are never converted. The two notification switches are the master switches for local notifications (§ 21): Trip reminders covers upcoming-trip, trip-start and activity reminders, and Budget alerts covers the budget threshold alert. Turning one on saves it at once and shows the OS prompt only while the permission was never asked for. While a switch is on and the permission isn't granted, a row says notifications are off for Wanderly, with Allow (or Open Settings once blocked), and it is read again on return to the foreground. Reminder times opens `/profile/notifications`. On web the switches stay, and the caption says reminders work in the mobile app.
 
 The Location section shows the OS permission (`checkMapLocationPermission`). It offers Allow while the permission can still be requested and Open Settings once it is granted (to revoke it) or blocked, and it checks the permission again whenever the app returns to the foreground.
 
@@ -848,3 +850,192 @@ Migration 5 creates `photos`: owner-scoped, `trip_id` cascading from `trips`, `a
 ### Testing
 
 `testing/photoFixtures.ts` has `photo`, `pickedImage`, `PHOTOS_TRIP`, `PHOTO_ACTIVITY`, `seededPhotoDatabase` (real in-memory SQLite), `FakePhotoFileStore` (`missing`, `failImportAt`), `FakeImageProcessor`, `FakeMediaPermissionService` and `FakePhotoLibraryPicker`. `jest.setup.ts` replaces expo-camera's `CameraView` with a View whose ref exposes `mockCamera.takePictureAsync`. Validation, use cases, repository, file store, permission mapping, picker, slice and `useMediaPermission` have unit tests; `photoFlows.test.tsx` drives the routes with `renderRouter`. The native camera, picker and file handling need on-device testing before release.
+
+## 20. Offline-first
+
+Wanderly is local-first: the traveller's own data lives in SQLite on the device and never needs the network, and public data (destinations, countries, weather, rates) is fetched from public APIs, kept on the device, and refreshed when it is out of date and the device is online. **There is no backend, so nothing synchronises between devices.** The pending-change outbox and sync engine below are a tested abstraction ready for a future cloud backend; today they only track what has changed, and the app says so.
+
+### Four kinds of data
+
+| Kind                         | Where                                                                                                                                                        | Examples                                                     | Offline behaviour                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| **Remote API data**          | Remote repositories over `HttpClient` (`RestCountriesRepository`, `WikipediaPlaceContentRepository`, Open-Meteo, Frankfurter, OSM)                           | Country facts, descriptions, forecasts, rates, nearby places | Fails fast with `offline` (interceptor), never thrown                                  |
+| **Cached data**              | `core/cache`: `MemoryCache` (per session) and `PersistentCache` over `cache_entries` (SQLite), plus feature caches (`StorageWeatherCache`, `exchange_rates`) | Destinations viewed, the country catalogue, forecasts        | Shown as a saved copy, labelled with its age; prunable and clearable at any time       |
+| **Local persistent data**    | Feature tables in `wanderly.db` (trips, activities, expenses, favorites, collections, photos)                                                                | Everything the traveller creates                             | Every operation works offline; the source of truth                                     |
+| **Pending local operations** | `core/sync`: `sync_outbox` (SQLite), written by repositories in the same transaction                                                                         | "trip-1 changed", "expense-3 deleted"                        | Tracked; would be pushed by `SyncEngine` through a `SyncGateway` once a backend exists |
+
+Screens never see which source answered: they call use cases, use cases call repository interfaces, and the composition root decides what sits behind them (Repository + Decorator).
+
+### Connectivity
+
+`NetInfoConnectivityService` adapts `@react-native-community/netinfo` (bundled in Expo Go, no config plugin) to the `ConnectivityService` port. It only re-emits real changes and ignores an initial reading older than a live event. As before, only `isConnected === false` counts as offline (§ 4). NetInfo uses the platform's own reachability on iOS and Android; the app doesn't rely on `isInternetReachable`.
+
+| Consumer                                       | Reacts to                                                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| HTTP `offlineGuard`                            | Fails requests with `offline` before they leave                                                                 |
+| `ConnectivityIndicator`                        | Header pill on every tab root: "Offline", then "Back online" for 3 s; opens Offline and data                    |
+| `connectRtkQueryToConnectivity`                | Dispatches RTK Query's `onOnline`/`onOffline` (and `onFocus`/`onFocusLost` from `AppState`) on real transitions |
+| `PersistentCache`                              | Ends `Retry-After` waits when the device comes back online                                                      |
+| `SyncEngine`                                   | Syncs when the device comes back online                                                                         |
+| `useWeather`, `useExploreMap`, `useTripBudget` | Refetch the forecast, reload places, convert expenses saved offline                                             |
+
+`useOfflineLifecycle` (mounted by the signed-in layout) wires RTK Query and starts the sync engine; signing out unmounts it.
+
+### Destination information offline
+
+```
+Memory (MemoryCache: TTL, coalescing)  →  Persistent (PersistentCache over SQLite)  →  Remote (HTTP)
+CachedCountryRepository                   PersistentCountryRepository                  RestCountriesRepository
+CachedPlaceContentRepository              PersistentPlaceContentRepository             WikipediaPlaceContentRepository
+```
+
+`PersistentCache.get(key, load)`:
+
+1. A stored copy younger than `freshForMs` is returned without a request.
+2. Otherwise `load()` runs; a success is stored and returned.
+3. If it fails with `offline`, `network`, `timeout`, `rateLimited` or `server`, a stored copy younger than `maxStaleMs` is returned with `refreshError`, and the entity carries `savedAt`.
+4. `notFound` deletes the stored copy.
+
+| Data                                         | Fresh for    | Shown up to | Kept |
+| -------------------------------------------- | ------------ | ----------- | ---- |
+| Country catalogue and country details        | 1 day        | 30 days     | 300  |
+| Wikipedia summaries (including "no article") | 3 days       | 30 days     | 400  |
+| Title search                                 | never stored |             |      |
+
+A saved copy shown for a failed refresh is not kept by the memory cache (`shouldCache`), so the next attempt after reconnecting really refreshes. `GetDestinationDetails` sets `DestinationDetails.savedAt` to the oldest saved part, and `SavedCopyNotice` says "You're offline. Showing information saved 2 days ago." (or "We couldn't refresh…" when online). `discoverApi` has `refetchOnReconnect`, so a destination, search or home section on screen refetches when the connection returns: fresh data comes from the caches without a request, saved copies and failures are refreshed.
+
+Stored data is untrusted: each record is validated with a zod schema (`countryCodec`, `catalogueCodec`, `summaryCodec`; one malformed country is dropped, not the catalogue), carries a format `version` (another version is discarded), and is ignored if its timestamp is in the future. If the store itself fails (database unavailable, failed migration), the cache logs and works network-only; it never fails a load the network could answer. Records are pruned by age and count every 25 writes. Settings › Offline and data shows how much is saved and can clear it (`ClearSavedData`); the traveller's own tables are untouched.
+
+### Pending operations (transactional outbox)
+
+Repositories take a `LocalChangeLog` and record each change **inside the transaction that makes it**: `LocalTripRepository` (create, edit, cancel, delete), `LocalActivityRepository` (create, edit, complete, reorder, delete, and every neighbour whose position moved), `LocalExpenseRepository` (create, edit, delete; not conversions, which every device derives), `LocalFavoritesRepository` (favorites, custom collections, memberships as favorite updates; default collections exist on every device). If the outbox row can't be written the whole write rolls back, so the outbox never misses or invents a change. Photos are files and are out of scope.
+
+Only _which_ entity changed is recorded (state-based sync). `coalesce` keeps one operation per entity:
+
+| Pending      | + create / update      | + delete                         |
+| ------------ | ---------------------- | -------------------------------- |
+| none         | upsert (new if create) | delete                           |
+| upsert (new) | upsert (still new)     | removed: the remote never saw it |
+| upsert       | upsert                 | delete                           |
+| delete       | upsert (not new)       | delete                           |
+
+A new upsert that is being pushed is not removed by a delete; the delete follows it.
+
+| Concern                     | How                                                                                                                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Idempotency                 | Every version of a change gets a new `idempotencyKey` (`trip:trip-1:<id>`); every retry of that version reuses it. A backend applies a key once. A change made during a push keeps its newer key; the push's acknowledgement then only clears `isNew`. |
+| Retry policy                | `ExponentialSyncRetryPolicy`: 5 s, 10 s, 20 s… capped at 30 min, ±20 % jitter, at least `Retry-After`; 8 attempts; only `network`, `timeout`, `rateLimited`, `server`, `storage` are retried. Others are `failed` at once.                             |
+| Duplicate triggers          | `SyncEngine.sync()` is single-flight: a trigger during a run schedules one more run, never a parallel one. `claim` (`pending` → `inFlight`) is conditional, so an operation can't be pushed twice.                                                     |
+| Connection lost mid-request | An `offline`/`cancelled` result returns the operation to `pending` without counting an attempt and pauses until NetInfo reports online (or 30 s, for networks that look online but aren't).                                                            |
+| App restart                 | Operations left `inFlight` are reset to `pending` at start and re-sent with the same key.                                                                                                                                                              |
+| Gone entities               | An upsert whose entity no longer exists (deleted, or cascaded with its trip) is dropped; the delete is pushed instead.                                                                                                                                 |
+| Failed operations           | Kept with their last error until "Try again" (`retryFailed`); never dropped silently.                                                                                                                                                                  |
+| Accounts                    | Rows are per owner; the engine only handles the signed-in owner and stops mid-run if that changes.                                                                                                                                                     |
+
+In this build `syncGateway` is `LocalOnlySyncGateway`: the engine counts pending changes (phase `localOnly`) and never pushes. Offline and data says "Wanderly doesn't have cloud accounts yet, so your data isn't copied to your other devices or backed up by Wanderly." A backend replaces one factory in `features/sync/di.ts`; `syncEntitySources` already reads each entity type's current state for a push.
+
+### Conflict resolution (for a future backend)
+
+Not implemented, because there is nothing to conflict with. The intended strategy:
+
+1. **Server is the arbiter, versions detect conflicts.** Each entity gets a server `version`. A push sends the version it was based on; the server applies it only if it still matches, and answers `409` otherwise. The gateway maps `409` to a non-retryable error, so the operation is marked `failed`, not retried blindly.
+2. **Resolve per entity type, by field where it is safe.**
+   - Trips, activities: field-level last-writer-wins using `updatedAt`, except deletes, which win over edits (a deleted trip stays deleted). Activity order (`sortOrder`) is taken from the most recent reorder of that day as a whole, so a day is never half of each.
+   - Expenses: amounts and currencies are never merged silently; a conflicting edit keeps both versions and asks the traveller. Conversions are recomputed after any merge.
+   - Favorites: a set; saving is idempotent by `targetId`, memberships merge as a union unless one side removed a membership after the other added it.
+3. **Pull after push.** After pushing, the client pulls changes since its last cursor and applies them in one transaction per entity type, without recording them in the outbox.
+4. **Tombstones.** Deletes are kept server-side long enough for every device to pull them.
+
+### Edge cases
+
+| Case                             | Behaviour                                                                                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Connection lost during a request | HTTP: `network`/`timeout` with retry where idempotent (§ 4); the destination falls back to its saved copy. Sync: the operation goes back to `pending`, uncounted.                                                                                                                                |
+| App restarted while offline      | Trips, itineraries, expenses and favorites load from SQLite; destinations viewed before load from `cache_entries` with a saved-copy notice; the session is kept (§ 10).                                                                                                                          |
+| Stale cached information         | Fresh windows per data type; a saved copy is labelled with its age and never shown after 30 days; refetched on reconnect.                                                                                                                                                                        |
+| Duplicate retry operations       | One outbox row per entity, single-flight engine, conditional claim, idempotency keys.                                                                                                                                                                                                            |
+| Database migration failure       | Each migration and its version commit together; a failure leaves the last good version and is retried on the next statement (§ 14). Meanwhile repositories return `storage` (screens show it with Try again), the device cache works network-only, and Offline and data shows the storage error. |
+| API rate limits                  | `429` is `rateLimited`; the HTTP layer retries short `Retry-After`s; `PersistentCache` honours longer ones without requests (showing the saved copy) until they pass or the device reconnects; the country catalogue is fetched at most daily.                                                   |
+| Failed refresh                   | The saved copy stays on screen with its age; Try again, a reconnect or the next visit refreshes; failures are never cached.                                                                                                                                                                      |
+| Expense created offline          | Saved unconverted (§ 17); `useTripBudget` converts it when the device comes back online.                                                                                                                                                                                                         |
+
+### Testing
+
+`testing/offlineFixtures.ts` provides `createOfflineStorage` (real SQLite with every migration, the outbox and cache store; pass an `engine` to simulate a restart) and `FakeSyncGateway` (scripted results, records pushes and keys). Covered: the NetInfo adapter; `PersistentCache` (fresh, stale, fallback per error kind, max age, `notFound`, `Retry-After`, corrupt and old-format records, store failure, restart, pruning); the discover decorators (restart offline, memory not keeping saved copies, offline search, cached "no article"); `coalesce`, the SQLite outbox (coalescing, keys, rollback, claim, acknowledge during a push, reschedule, failed and retry, restart recovery, owners); the retry policy; the engine (local-only, push, offline wait, connection lost mid-request, captive-portal pause, backoff timer, failed and retry, single flight, restart re-send, gone entities, missing sources, signed out, unreadable database, debounce); repositories recording in the same transaction (including rollback when the outbox write fails); migrations 6 and 7 (upgrade, failure and retry); RTK Query reconnect; the indicator, Offline and data, the destination saved-copy notice after a restart offline, and conversion on reconnect.
+
+## 21. Notifications and background tasks
+
+`features/notifications/` schedules local notifications (expo-notifications) for upcoming trips, trip starts and timed activities, shows budget alerts, and refreshes them in the background (expo-task-manager with expo-background-task). There is no backend, so there are no push notifications or push tokens.
+
+### Layers
+
+```
+domain        Notification (kinds, ids, links, data) · NotificationSettings · planReminders · evaluateBudgetAlerts
+              ports: NotificationService, NotificationRepository, DeviceTimeZone, NotificationText,
+                     BackgroundRefreshService, NotificationResponses
+              use cases: ReconcileNotifications (single-flight), ClearNotifications,
+                         Get/RequestNotificationPermission, Get/SaveNotificationSettings
+data          ExpoNotificationService (UnsupportedNotificationService on web) · StorageNotificationRepository
+              SystemDeviceTimeZone · I18nNotificationText · ExpoBackgroundRefreshService · ExpoNotificationResponses
+presentation  useNotificationLifecycle (signed-in layout) · useNotificationResponses (RootNavigator)
+              useClearNotificationsWhenSignedOut (RootNavigator) · useSessionReconcile
+              useNotificationPermissionSetting · useNotificationSettings · NotificationSettingsScreen
+              routeForNotification
+bootstrap     defineNotificationRefreshTask (module scope in app/_layout.tsx)
+```
+
+### Declarative reconcile
+
+Nothing is scheduled one event at a time. `planReminders` works out every reminder that should exist now, from the owner's upcoming and ongoing trips, their timed and unfinished activities within the trip dates, the master switches (§ 18), the reminder times and the device time zone. `ReconcileNotifications` compares that set with `listScheduled()` and:
+
+- keeps a notification whose identifier, owner and fingerprint match;
+- cancels every other Wanderly notification (prefix `wanderly.`): obsolete, changed, unreadable or another account's;
+- schedules what is missing, soonest first, at most 60 (iOS keeps 64 pending; later ones are added on later runs).
+
+Identifiers are stable per entity (`wanderly.trip-upcoming.<tripId>`, `wanderly.trip-start.<tripId>`, `wanderly.activity.<activityId>`), so scheduling never duplicates. The fingerprint is `fireAt|title|body|url`, so a new time, zone or language reschedules. Day reminders fire at 09:00 device time; activity reminders fire the chosen lead time before the start. Notifications of other apps are never touched.
+
+Reconcile is single-flight like `SyncEngine`: a call during a run queues one more run and shares its result. It runs on sign-in or launch, 300 ms after a burst of local changes (`localChangeLog.recorded`), on return to the foreground, after a master switch or the language changes (debounced, so the preference is saved first), after a Reminder times change, after the permission is granted, and from the background task. It returns `Result` and never throws.
+
+While the permission isn't granted, both switches are off, or nobody is signed in, it schedules nothing and cancels every Wanderly notification. Reconcile never shows the permission prompt; Settings does.
+
+### Budget alerts
+
+`evaluateBudgetAlerts` uses `summarizeBudget` (only expenses converted into the trip currency count) for upcoming and ongoing trips with a budget. When spending reaches the threshold (50, 75, 80, 90 or 100%, default 80) an immediate notification shows the trip and percent, and `notifications.state.v1` remembers the trip and threshold. Dropping below re-arms it, a changed threshold is judged against the new value, deleted trips are forgotten, and an alert that couldn't be shown is tried again. Another account's alerts are never carried over.
+
+### Storage
+
+`notifications.settings.v1` holds the reminder times (upcoming trip Off/1/2/3/7 days, trip start on/off, activity Off/15/30/60/120/1440 minutes, budget threshold), each field falling back to its default on its own. `notifications.state.v1` holds the owner of the scheduled notifications and the budget alerts sent. `SaveNotificationSettings` merges into what is stored, one save at a time, like `SavePreferences`.
+
+### Background refresh
+
+While a master switch is on and the permission is granted, `wanderly-notification-refresh` is registered with a minimum interval of 360 minutes. The OS decides when (and whether) it runs: iOS uses BGTaskScheduler windows, Android WorkManager, and Low Power Mode or a restricted status skips registration. The task reconciles for the last stored owner (no session is restored there) and returns Success or Failed. Nothing depends on it running on time: every foreground trigger repeats the same reconcile. It is unregistered when everything is off and on sign-out, and never registered on web. `TaskManager.defineTask` runs at module scope in `app/_layout.tsx`, as headless launches require.
+
+### Taps
+
+Notification data carries `{ url, ownerId, kind, fingerprint }`. `routeForNotification` accepts only well-formed data for the signed-in owner and a link on the `resolveDeepLink` allow-list (§ 10): trip reminders open the trip, activity reminders the activity, budget alerts the trip's budget. While signed in, a tap navigates at once. During launch or while signed out, the link goes to `deepLinkInbox` and opens after sign-in; the tap that cold-started the app is read with `getLastNotificationResponse`.
+
+### Platform notes
+
+- Android needs a channel before the permission prompt (Android 13+), so `RequestNotificationPermission` calls `ensureChannels` first (`reminders`, `budget`), named in the app's language. Reconcile passes the reminders' language whenever the permission is granted, and setting a channel again with the same id renames it, so the names follow a language change.
+- Android 12+ may deliver DATE triggers a little late without the exact-alarm permission, which Wanderly doesn't request. Settings says times are approximate.
+- iOS provisional (quiet) authorisation counts as granted.
+- A notification that fires while the app is open shows as a banner and in the list (`setNotificationHandler`).
+- expo-notifications and background tasks need a development build; Expo Go doesn't include them.
+
+### Edge cases
+
+| Case                                        | Behaviour                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permission denied or blocked                | Nothing is scheduled and Wanderly's notifications are cancelled; Settings offers Allow or Open Settings.                                          |
+| Duplicate scheduling                        | Stable identifiers, a fingerprint diff and single-flight reconcile.                                                                               |
+| Trip deleted or cancelled                   | The next reconcile (local change) cancels its reminders.                                                                                          |
+| Itinerary time or trip dates changed        | The fingerprint changes, so the reminder is cancelled and rescheduled at the new time.                                                            |
+| Activity deleted, completed or out of dates | Its reminder is cancelled.                                                                                                                        |
+| Time zone change                            | Fire times follow the device zone at the next reconcile (foreground or background).                                                               |
+| Device reboot or OS cleanup                 | The OS keeps scheduled notifications; anything lost is scheduled again at the next reconcile.                                                     |
+| Sign-out, expiry or another account         | `useClearNotificationsWhenSignedOut` (root) runs `ClearNotifications` whenever auth is unauthenticated, including a launch that finds the session expired; a new owner's first reconcile replaces the rest. |
+| Web                                         | No notifications or background task; the switches stay and the caption says so.                                                                   |
+
+### Testing
+
+`testing/notificationFixtures.ts` provides `FakeNotificationService` (in-memory OS, permission and prompt answer, list failure), `FakeBackgroundRefreshService`, `FakeNotificationResponses` (taps and the launch tap), `FixedOffsetTimeZone`, `wallClock` and `fakeNotificationCopy`; `createTestDependencies` uses them by default, and `jest.setup.ts` mocks the three Expo modules. Covered: the planner (defaults, skips, cap, settings, fingerprints, zones), budget alerts, routing, reconcile against real SQLite (idempotency, deletes, edits, strays, other owners, permission, switches, signed out, errors, budget dedupe, background owner, single flight), the storage repository, the Expo adapters with module mocks, the lifecycle hook, notification taps through the root navigator, the background task, Settings and Reminder times. The Spanish and Urdu notification text is machine-written and needs review before release.

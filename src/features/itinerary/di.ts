@@ -38,7 +38,8 @@ export const itineraryFactories: Factories<
   ItineraryDependencies,
   CoreDependencies & Pick<TripsDependencies, 'tripRepository' | 'tripOwnerProvider'> & ItineraryDependencies
 > = {
-  activityRepository: (c) => new LocalActivityRepository(c.database, c.logger.child({ scope: 'itinerary' })),
+  activityRepository: (c) =>
+    new LocalActivityRepository(c.database, c.logger.child({ scope: 'itinerary' }), c.localChangeLog),
   getItinerary: (c) => new GetItinerary(c.activityRepository, c.tripRepository, c.tripOwnerProvider),
   getActivity: (c) => new GetActivity(c.activityRepository, c.tripOwnerProvider),
   createActivity: (c) =>

@@ -35,6 +35,7 @@ import { CATEGORY_ICONS } from '../categoryIcons';
 import { DestinationImage } from '../components/DestinationImage';
 import { DestinationWeatherCard } from '../components/DestinationWeatherCard';
 import { formatCallingCode, formatNumber, regionLabel } from '../format';
+import { SavedCopyNotice } from '../components/SavedCopyNotice';
 import { useDestinationDetails } from '../hooks/useDestinationDetails';
 
 interface DestinationScreenProps {
@@ -79,6 +80,7 @@ export function DestinationScreen({ destinationId }: DestinationScreenProps) {
       ) : favorite.savedStateUnknown ? (
         <InlineMessage tone="warning" icon="warning" message={t('savedPlaces.savedStateUnknown')} />
       ) : null}
+      <SavedCopyNotice savedAt={details.savedAt} />
       {details.kind === 'country' ? (
         <CountryDetails details={details} onRetry={retry} refreshing={refreshing} />
       ) : (

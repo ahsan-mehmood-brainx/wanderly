@@ -1,10 +1,11 @@
-import { screen, userEvent, waitFor } from '@testing-library/react-native';
+import { screen, userEvent, waitFor, within } from '@testing-library/react-native';
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import { renderRouter } from 'expo-router/testing-library';
 import { Alert, I18nManager, Linking } from 'react-native';
 
 import AboutRoute from '@/app/(app)/(tabs)/profile/about';
+import NotificationSettingsRoute from '@/app/(app)/(tabs)/profile/notifications';
 import PrivacyRoute from '@/app/(app)/(tabs)/profile/privacy';
 import SettingsRoute from '@/app/(app)/(tabs)/profile/settings';
 import { AppProviders } from '@/bootstrap/AppProviders';
@@ -14,11 +15,13 @@ import { createI18n } from '@/core/i18n/createI18n';
 import { err, ok } from '@/core/result';
 import { restoreSession } from '@/features/auth/presentation/state/authSlice';
 import { InMemorySessionRepository, testSession } from '@/testing/authFixtures';
+import { captureAppState } from '@/testing/captureAppState';
 import { createTestStore } from '@/testing/createTestStore';
 import { FakeLocationService } from '@/testing/FakeLocationService';
 import { InMemoryKeyValueStore } from '@/testing/InMemoryKeyValueStore';
 import { layoutDirectionAt } from '@/testing/layoutDirection';
 import { MockPreferencesRepository } from '@/testing/MockPreferencesRepository';
+import { FakeNotificationService } from '@/testing/notificationFixtures';
 import { renderWithProviders } from '@/testing/renderWithProviders';
 import { createTestDependencies } from '@/testing/testDependencies';
 
@@ -184,12 +187,13 @@ describe('SettingsScreen', () => {
   });
 
   describe('notifications', () => {
-    it('TC-07 offers trip reminder and budget alert switches, off by default, and says nothing is sent yet', async () => {
+    it('TC-07 AC10 offers trip reminder and budget alert switches, off by default, and no longer says nothing is sent', async () => {
       await renderWithProviders(<SettingsScreen />);
 
       expect(await screen.findByRole('switch', { name: 'Trip reminders' })).not.toBeChecked();
       expect(screen.getByRole('switch', { name: 'Budget alerts' })).not.toBeChecked();
-      expect(screen.getByText(/doesn.t send notifications yet/i)).toBeOnTheScreen();
+      expect(screen.queryByText(/doesn.t send notifications/i)).not.toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: /Reminder times/ })).toBeOnTheScreen();
     });
 
     it('TC-07 saves a switch and keeps it after a restart', async () => {
@@ -212,6 +216,151 @@ describe('SettingsScreen', () => {
 
       expect(await screen.findByRole('switch', { name: 'Trip reminders' })).toBeChecked();
       expect(screen.getByRole('switch', { name: 'Budget alerts' })).not.toBeChecked();
+    });
+  });
+
+  describe('notification permission', () => {
+    let appState: ReturnType<typeof captureAppState>;
+
+    beforeEach(() => {
+      appState = captureAppState();
+    });
+
+    afterEach(() => {
+      appState.restore();
+      jest.restoreAllMocks();
+    });
+
+    const remindersOn = (notifications = { tripReminders: true, budgetAlerts: false }) =>
+      new MockPreferencesRepository({ ...DEFAULT_PREFERENCES, notifications });
+
+    const accessRow = async () => within(await screen.findByTestId('notification-access'));
+
+    it('AC4 turning Trip reminders on asks the system exactly once and keeps the switch on', async () => {
+      const user = userEvent.setup();
+      const notifications = new FakeNotificationService();
+      const { dependencies } = await renderWithProviders(<SettingsScreen />, {
+        dependencies: { notificationService: notifications },
+      });
+
+      await user.press(await screen.findByRole('switch', { name: 'Trip reminders' }));
+
+      expect(screen.getByRole('switch', { name: 'Trip reminders' })).toBeChecked();
+      await waitFor(() => expect(notifications.requestPermission).toHaveBeenCalledTimes(1));
+      await waitFor(async () =>
+        expect((await storedPreferences(dependencies.preferencesRepository)).notifications.tripReminders).toBe(true),
+      );
+
+      await user.press(screen.getByRole('switch', { name: 'Budget alerts' }));
+
+      expect(screen.getByRole('switch', { name: 'Budget alerts' })).toBeChecked();
+      expect(notifications.requestPermission).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('notification-access')).not.toBeOnTheScreen();
+    });
+
+    it('AC4 keeps the switch on when the prompt is declined, and says notifications are off with Allow', async () => {
+      const user = userEvent.setup();
+      const notifications = new FakeNotificationService();
+      notifications.answerPromptWith = 'denied';
+      const { dependencies } = await renderWithProviders(<SettingsScreen />, {
+        dependencies: { notificationService: notifications },
+      });
+
+      await user.press(await screen.findByRole('switch', { name: 'Budget alerts' }));
+
+      const row = await accessRow();
+      expect(row.getByText('Notifications are off for Wanderly')).toBeOnTheScreen();
+      expect(row.getByRole('button', { name: 'Allow' })).toBeOnTheScreen();
+      expect(screen.getByRole('switch', { name: 'Budget alerts' })).toBeChecked();
+      await waitFor(async () =>
+        expect((await storedPreferences(dependencies.preferencesRepository)).notifications.budgetAlerts).toBe(true),
+      );
+    });
+
+    it('AC4 asks nothing when permission is already granted', async () => {
+      const user = userEvent.setup();
+      const notifications = new FakeNotificationService();
+      notifications.permission = 'granted';
+      await renderWithProviders(<SettingsScreen />, { dependencies: { notificationService: notifications } });
+
+      await user.press(await screen.findByRole('switch', { name: 'Trip reminders' }));
+
+      expect(screen.getByRole('switch', { name: 'Trip reminders' })).toBeChecked();
+      await waitFor(() => expect(notifications.getPermission).toHaveBeenCalled());
+      expect(notifications.requestPermission).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('notification-access')).not.toBeOnTheScreen();
+    });
+
+    it('AC4 offers Allow while a switch is on and permission is denied, and hides it once allowed', async () => {
+      const user = userEvent.setup();
+      const notifications = new FakeNotificationService();
+      notifications.permission = 'denied';
+      await renderWithProviders(<SettingsScreen />, {
+        dependencies: { notificationService: notifications, preferencesRepository: remindersOn() },
+      });
+
+      const row = await accessRow();
+      expect(row.getByText('Notifications are off for Wanderly')).toBeOnTheScreen();
+      await user.press(row.getByRole('button', { name: 'Allow' }));
+
+      expect(notifications.requestPermission).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(screen.queryByTestId('notification-access')).not.toBeOnTheScreen());
+    });
+
+    it('AC4 offers Allow while permission was never asked for and a switch is already on', async () => {
+      const notifications = new FakeNotificationService();
+      await renderWithProviders(<SettingsScreen />, {
+        dependencies: { notificationService: notifications, preferencesRepository: remindersOn() },
+      });
+
+      expect((await accessRow()).getByRole('button', { name: 'Allow' })).toBeOnTheScreen();
+    });
+
+    it('AC4 sends a blocked permission to the system settings', async () => {
+      const user = userEvent.setup();
+      const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+      const notifications = new FakeNotificationService();
+      notifications.permission = 'blocked';
+      await renderWithProviders(<SettingsScreen />, {
+        dependencies: {
+          notificationService: notifications,
+          preferencesRepository: remindersOn({ tripReminders: false, budgetAlerts: true }),
+        },
+      });
+
+      const row = await accessRow();
+      expect(row.getByText('Notifications are off for Wanderly')).toBeOnTheScreen();
+      expect(row.queryByRole('button', { name: 'Allow' })).not.toBeOnTheScreen();
+      await user.press(row.getByRole('button', { name: 'Open Settings' }));
+
+      expect(openSettings).toHaveBeenCalledTimes(1);
+      expect(notifications.requestPermission).not.toHaveBeenCalled();
+    });
+
+    it('AC4 shows no warning while both switches are off, whatever the permission', async () => {
+      const notifications = new FakeNotificationService();
+      notifications.permission = 'blocked';
+      await renderWithProviders(<SettingsScreen />, { dependencies: { notificationService: notifications } });
+
+      await screen.findByRole('switch', { name: 'Trip reminders' });
+      await waitFor(() => expect(notifications.getPermission).toHaveBeenCalled());
+
+      expect(screen.queryByTestId('notification-access')).not.toBeOnTheScreen();
+      expect(screen.queryByText('Notifications are off for Wanderly')).not.toBeOnTheScreen();
+    });
+
+    it('AC4 reads the permission again on return to the foreground', async () => {
+      const notifications = new FakeNotificationService();
+      notifications.permission = 'blocked';
+      await renderWithProviders(<SettingsScreen />, {
+        dependencies: { notificationService: notifications, preferencesRepository: remindersOn() },
+      });
+      await accessRow();
+
+      notifications.permission = 'granted';
+      await appState.foreground();
+
+      await waitFor(() => expect(screen.queryByTestId('notification-access')).not.toBeOnTheScreen());
     });
   });
 
@@ -295,6 +444,7 @@ describe('Settings navigation', () => {
         'profile/settings': SettingsRoute,
         'profile/privacy': PrivacyRoute,
         'profile/about': AboutRoute,
+        'profile/notifications': NotificationSettingsRoute,
       },
       { initialUrl: '/profile/settings' },
     );
@@ -313,6 +463,15 @@ describe('Settings navigation', () => {
     await waitFor(() => expect(router.getPathname()).toBe('/profile/privacy'));
     expect(await screen.findByText(/OpenStreetMap/)).toBeOnTheScreen();
     expect(screen.getByText(/Open-Meteo/)).toBeOnTheScreen();
+  });
+
+  it('AC6 opens Reminder times', async () => {
+    const { router, user } = await launch();
+
+    await user.press(await screen.findByRole('button', { name: /Reminder times/ }));
+
+    await waitFor(() => expect(router.getPathname()).toBe('/profile/notifications'));
+    expect(await screen.findAllByRole('radiogroup')).toHaveLength(3);
   });
 
   it('TC-07 opens About Wanderly with the app version', async () => {

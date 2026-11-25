@@ -4,6 +4,7 @@ import { type SqlDatabase, type SqlExecutor } from '@/core/database/SqlDatabase'
 import { AppError } from '@/core/errors/AppError';
 import { type Logger } from '@/core/logging/Logger';
 import { err, ok, type Result } from '@/core/result';
+import { type LocalChangeKind, type LocalChangeLog, NO_CHANGE_LOG } from '@/core/sync/LocalChange';
 
 import {
   type Collection,
@@ -94,6 +95,10 @@ function toMembership(row: z.infer<typeof membershipRowSchema>): CollectionMembe
   return { collectionId: row.collection_id, favoriteId: row.favorite_id, addedAt: row.added_at };
 }
 
+/** Entity types in the sync outbox. Collection memberships are part of the favorite's state. */
+export const FAVORITE_SYNC_ENTITY = 'favorite';
+export const COLLECTION_SYNC_ENTITY = 'collection';
+
 const refused = (reason: 'duplicate' | 'limitReached'): CollectionWriteOutcome => ({ status: 'refused', reason });
 
 const exists = async (tx: SqlExecutor, sql: string, params: readonly string[]) =>
@@ -102,12 +107,15 @@ const exists = async (tx: SqlExecutor, sql: string, params: readonly string[]) =
 /**
  * Favorites, collections and memberships in the on-device SQLite database
  * (migration 3). Every statement is limited to `owner_id`, so one account can't
- * read or change another's. No network is involved in any operation.
+ * read or change another's. No network is involved in any operation. Every change
+ * to a favorite or a custom collection is recorded in the sync outbox in the same
+ * transaction (default collections exist on every device and aren't recorded).
  */
 export class LocalFavoritesRepository implements FavoritesRepository {
   constructor(
     private readonly database: SqlDatabase,
     private readonly logger: Logger,
+    private readonly changeLog: LocalChangeLog = NO_CHANGE_LOG,
   ) {}
 
   loadAll(ownerId: string): Promise<Result<FavoritesSnapshot, AppError>> {
@@ -162,7 +170,7 @@ export class LocalFavoritesRepository implements FavoritesRepository {
     const stored = await this.attempt('save the place', () =>
       this.database.transaction(async (tx) => {
         // A second save of the same target (double tap, two screens) keeps the first row.
-        await tx.run(
+        const { changes } = await tx.run(
           `INSERT INTO favorites (owner_id, ${FAVORITE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (owner_id, target_id) DO NOTHING`,
           [
@@ -180,6 +188,7 @@ export class LocalFavoritesRepository implements FavoritesRepository {
             favorite.savedAt,
           ],
         );
+        if (changes > 0) await this.recordFavorite(tx, ownerId, favorite.id, 'create');
         return this.selectByTarget(tx, ownerId, favorite.targetId);
       }),
     );
@@ -190,13 +199,13 @@ export class LocalFavoritesRepository implements FavoritesRepository {
   }
 
   async deleteFavorite(ownerId: string, favoriteId: string): Promise<Result<void, AppError>> {
-    const deleted = await this.attempt('remove the saved place', async () => {
-      const { changes } = await this.database.run('DELETE FROM favorites WHERE id = ? AND owner_id = ?', [
-        favoriteId,
-        ownerId,
-      ]);
-      return changes > 0;
-    });
+    const deleted = await this.attempt('remove the saved place', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run('DELETE FROM favorites WHERE id = ? AND owner_id = ?', [favoriteId, ownerId]);
+        if (changes > 0) await this.recordFavorite(tx, ownerId, favoriteId, 'delete');
+        return changes > 0;
+      }),
+    );
     return requireFound(deleted, `Saved place ${favoriteId}`);
   }
 
@@ -218,6 +227,7 @@ export class LocalFavoritesRepository implements FavoritesRepository {
           collection.createdAt,
           collection.updatedAt,
         ]);
+        if (collection.kind === 'custom') await this.recordCollection(tx, ownerId, collection.id, 'create');
         return { status: 'saved', collection };
       }),
     );
@@ -239,6 +249,7 @@ export class LocalFavoritesRepository implements FavoritesRepository {
           "UPDATE collections SET name = ?, updated_at = ? WHERE owner_id = ? AND id = ? AND kind = 'custom'",
           [name, updatedAt, ownerId, id],
         );
+        await this.recordCollection(tx, ownerId, id, 'update');
         return { status: 'saved', collection: { ...existing, name, updatedAt } };
       }),
     );
@@ -247,13 +258,16 @@ export class LocalFavoritesRepository implements FavoritesRepository {
   }
 
   async deleteCollection(ownerId: string, id: string): Promise<Result<void, AppError>> {
-    const deleted = await this.attempt('delete the collection', async () => {
-      const { changes } = await this.database.run(
-        "DELETE FROM collections WHERE owner_id = ? AND id = ? AND kind = 'custom'",
-        [ownerId, id],
-      );
-      return changes > 0;
-    });
+    const deleted = await this.attempt('delete the collection', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run("DELETE FROM collections WHERE owner_id = ? AND id = ? AND kind = 'custom'", [
+          ownerId,
+          id,
+        ]);
+        if (changes > 0) await this.recordCollection(tx, ownerId, id, 'delete');
+        return changes > 0;
+      }),
+    );
     return requireFound(deleted, `Collection ${id}`);
   }
 
@@ -293,6 +307,7 @@ export class LocalFavoritesRepository implements FavoritesRepository {
             [ownerId, collectionId, favoriteId, now],
           );
         }
+        await this.recordFavorite(tx, ownerId, favoriteId, 'update');
         const rows = await tx.getAll(
           `SELECT collection_id, favorite_id, added_at FROM collection_items
            WHERE owner_id = ? AND favorite_id = ? ORDER BY added_at, collection_id`,
@@ -308,14 +323,25 @@ export class LocalFavoritesRepository implements FavoritesRepository {
   }
 
   async removeMembership(ownerId: string, collectionId: string, favoriteId: string): Promise<Result<void, AppError>> {
-    const removed = await this.attempt('remove the place from the collection', async () => {
-      const { changes } = await this.database.run(
-        'DELETE FROM collection_items WHERE owner_id = ? AND collection_id = ? AND favorite_id = ?',
-        [ownerId, collectionId, favoriteId],
-      );
-      return changes > 0;
-    });
+    const removed = await this.attempt('remove the place from the collection', () =>
+      this.database.transaction(async (tx) => {
+        const { changes } = await tx.run(
+          'DELETE FROM collection_items WHERE owner_id = ? AND collection_id = ? AND favorite_id = ?',
+          [ownerId, collectionId, favoriteId],
+        );
+        if (changes > 0) await this.recordFavorite(tx, ownerId, favoriteId, 'update');
+        return changes > 0;
+      }),
+    );
     return requireFound(removed, `Saved place ${favoriteId} in collection ${collectionId}`);
+  }
+
+  private recordFavorite(tx: SqlExecutor, ownerId: string, entityId: string, kind: LocalChangeKind) {
+    return this.changeLog.record(tx, { ownerId, entityType: FAVORITE_SYNC_ENTITY, entityId, kind });
+  }
+
+  private recordCollection(tx: SqlExecutor, ownerId: string, entityId: string, kind: LocalChangeKind) {
+    return this.changeLog.record(tx, { ownerId, entityType: COLLECTION_SYNC_ENTITY, entityId, kind });
   }
 
   /** The owner's readable custom collections. */

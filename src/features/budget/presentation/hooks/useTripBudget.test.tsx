@@ -15,6 +15,8 @@ import {
   unconvertedExpense,
 } from '@/testing/budgetFixtures';
 import { createTestStore } from '@/testing/createTestStore';
+import { httpFailure } from '@/testing/discoverFixtures';
+import { FakeConnectivityService, OFFLINE, ONLINE } from '@/testing/FakeConnectivityService';
 import { FakeHttpClientFactory } from '@/testing/FakeHttpClient';
 import { ManualClock } from '@/testing/ManualClock';
 import { createTestDependencies } from '@/testing/testDependencies';
@@ -104,5 +106,40 @@ describe('useTripBudget', () => {
     await waitFor(() => expect(overview.result.current.summary).toMatchObject({ unconvertedCount: 0 }));
     expect(card.result.current.summary).toMatchObject({ unconvertedCount: 0 });
     expect(getTripBudget).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useTripBudget offline', () => {
+  it('converts expenses saved offline as soon as the device is back online', async () => {
+    const storage = await seededBudgetDatabase([BUDGET_TRIP], [unconvertedExpense({ createdAt: 2 })]);
+    const factory = new FakeHttpClientFactory();
+    factory.client('frankfurter').otherwise(() => httpFailure('offline'));
+    const connectivity = new FakeConnectivityService(OFFLINE);
+    const dependencies = createTestDependencies({
+      database: storage.database,
+      tripOwnerProvider: new FakeTripOwnerProvider(),
+      clock: new ManualClock(TRIPS_NOW),
+      httpClientFactory: factory,
+      connectivity,
+    });
+    const store = createTestStore(dependencies);
+    await store.dispatch(loadTrips());
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <DependenciesProvider dependencies={dependencies}>
+        <ReduxProvider store={store}>{children}</ReduxProvider>
+      </DependenciesProvider>
+    );
+    const getTripBudget = jest.spyOn(dependencies.getTripBudget, 'execute');
+
+    const { result } = await renderHook(() => useTripBudget('trip-1'), { wrapper });
+    await waitFor(() => expect(getTripBudget).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.converting).toBe(false));
+    expect(result.current.summary).toMatchObject({ unconvertedCount: 1 });
+
+    stubFrankfurter(factory, { 'EUR>USD': 1.0805, 'JPY>USD': 0.0061 });
+    await act(async () => connectivity.set(ONLINE));
+
+    await waitFor(() => expect(result.current.summary).toMatchObject({ unconvertedCount: 0 }));
+    expect(getTripBudget).toHaveBeenCalledTimes(2);
   });
 });

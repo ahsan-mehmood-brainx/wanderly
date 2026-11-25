@@ -18,3 +18,4 @@ export { InlineMessage, type InlineMessageTone } from './InlineMessage';
 export { ListDetailRow, ListGroup, ListNavRow, type ListDetailRowProps, type ListNavRowProps } from './ListGroup';
 export { OptionGroup, type Option } from './OptionGroup';
 export { Screen } from './Screen';
+export { SettingsSection, type SettingsSectionProps } from './SettingsSection';

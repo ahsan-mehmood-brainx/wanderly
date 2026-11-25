@@ -1,4 +1,4 @@
-import * as Network from 'expo-network';
+import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 
 import { Subject } from '@/core/events/Subject';
 import { type Logger } from '@/core/logging/Logger';
@@ -11,33 +11,49 @@ import {
   UNKNOWN_CONNECTIVITY,
 } from './ConnectivityService';
 
-function toConnectivityState(state: Network.NetworkState): ConnectivityState {
+export function toConnectivityState(state: NetInfoState): ConnectivityState {
   return {
     isConnected: state.isConnected ?? null,
     isInternetReachable: state.isInternetReachable ?? null,
-    type: (state.type ?? 'unknown').toLowerCase(),
+    type: String(state.type ?? 'unknown').toLowerCase(),
   };
 }
 
+/** The part of NetInfo this adapter uses, injectable so tests drive it without the native module. */
+export interface NetInfoSource {
+  addEventListener(listener: (state: NetInfoState) => void): () => void;
+  fetch(): Promise<NetInfoState>;
+}
+
 /**
- * Adapter from `expo-network` to {@link ConnectivityService}. Listens for native
- * network events for its whole lifetime (it is a container singleton) and re-emits
- * only real changes to its own subscribers.
+ * Adapter from `@react-native-community/netinfo` to {@link ConnectivityService}.
+ *
+ * NetInfo calls a new listener with the latest state soon after it subscribes, then
+ * with every change; the explicit `fetch()` covers platforms where that first call
+ * is late. A reading that arrives after a live event is older than it and ignored.
+ * Only real changes are re-emitted, so subscribers (UI, HTTP guard, RTK Query
+ * reconnect, sync engine) never see duplicates.
+ *
+ * NetInfo checks reachability with the platform's own validation on iOS and
+ * Android (`useNativeReachability`, the default). The app still counts only
+ * `isConnected === false` as offline (see `isOfflineState`).
  */
-export class ExpoNetworkConnectivityService implements ConnectivityService {
+export class NetInfoConnectivityService implements ConnectivityService {
   private state: ConnectivityState = UNKNOWN_CONNECTIVITY;
   private readonly changes: Subject<ConnectivityState>;
-  private readonly nativeSubscription: { remove(): void };
+  private readonly unsubscribeNative: () => void;
   private hasReceivedEvent = false;
 
-  constructor(private readonly logger: Logger) {
+  constructor(
+    private readonly logger: Logger,
+    source: NetInfoSource = NetInfo,
+  ) {
     this.changes = new Subject((error) => logger.error('Connectivity listener threw', error));
-    this.nativeSubscription = Network.addNetworkStateListener((state) => {
+    this.unsubscribeNative = source.addEventListener((state) => {
       this.hasReceivedEvent = true;
       this.update(toConnectivityState(state));
     });
-    Network.getNetworkStateAsync().then(
-      // An event that arrived first is newer than this initial reading.
+    source.fetch().then(
       (state) => {
         if (!this.hasReceivedEvent) this.update(toConnectivityState(state));
       },
@@ -53,7 +69,7 @@ export class ExpoNetworkConnectivityService implements ConnectivityService {
   readonly isOffline = (): boolean => isOfflineState(this.state);
 
   dispose(): void {
-    this.nativeSubscription.remove();
+    this.unsubscribeNative();
     this.changes.clear();
   }
 

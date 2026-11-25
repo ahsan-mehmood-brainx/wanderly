@@ -3,12 +3,6 @@ import { type AppDependencies } from '@/core/di/AppDependencies';
 import { getAppliedLanguage } from './appliedLanguage';
 import { createAppContainer } from './createAppContainer';
 
-jest.mock('expo-network', () => ({
-  addNetworkStateListener: jest.fn(() => ({ remove: jest.fn() })),
-  getNetworkStateAsync: jest.fn(() => new Promise(() => undefined)),
-  NetworkStateType: {},
-}));
-
 describe('createAppContainer (composition root)', () => {
   it('wires every registered service without errors or cycles', () => {
     const { dependencies } = createAppContainer();

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 
+import { SqliteCacheStore } from '@/core/cache/SqliteCacheStore';
 import { type AppConfig } from '@/core/config/appConfig';
 import { expoSqliteDriver } from '@/core/database/ExpoSqliteDriver';
 import { SqliteDatabase } from '@/core/database/SqliteDatabase';
@@ -8,10 +9,11 @@ import { type Factories } from '@/core/di/createContainer';
 import { AxiosHttpClientFactory } from '@/core/http/HttpClientFactory';
 import { ExponentialBackoffRetry } from '@/core/http/strategies/RetryStrategy';
 import { AppLogger, ConsoleTransport } from '@/core/logging/Logger';
-import { ExpoNetworkConnectivityService } from '@/core/network/ExpoNetworkConnectivityService';
+import { NetInfoConnectivityService } from '@/core/network/NetInfoConnectivityService';
 import { AsyncStorageKeyValueStore } from '@/core/storage/AsyncStorageKeyValueStore';
 import { ExpoSecureKeyValueStore } from '@/core/storage/ExpoSecureKeyValueStore';
 import { MemorySecureKeyValueStore } from '@/core/storage/MemorySecureKeyValueStore';
+import { SqliteSyncOutbox } from '@/core/sync/SqliteSyncOutbox';
 import { systemClock } from '@/core/utils/Clock';
 import { randomId } from '@/core/utils/IdGenerator';
 
@@ -47,7 +49,11 @@ export function createCoreFactories({ config, getLanguage }: CoreFactoryOptions)
         migrations: APP_MIGRATIONS,
         logger: c.logger.child({ scope: 'database' }),
       }),
-    connectivity: (c) => new ExpoNetworkConnectivityService(c.logger.child({ scope: 'connectivity' })),
+    cacheStore: (c) => new SqliteCacheStore(c.database),
+    syncOutbox: (c) => new SqliteSyncOutbox(c.database, c.clock, c.idGenerator, c.logger.child({ scope: 'sync' })),
+    // Both sides of the same table; the engine listens to `localChangeLog.recorded`.
+    localChangeLog: (c) => new SqliteSyncOutbox(c.database, c.clock, c.idGenerator, c.logger.child({ scope: 'sync' })),
+    connectivity: (c) => new NetInfoConnectivityService(c.logger.child({ scope: 'connectivity' })),
     httpClientFactory: (c) =>
       new AxiosHttpClientFactory({
         logger: c.logger,

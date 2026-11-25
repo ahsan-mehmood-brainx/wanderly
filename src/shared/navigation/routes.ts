@@ -83,6 +83,8 @@ export const routes = {
   privacy: '/profile/privacy',
   about: '/profile/about',
   designSystem: '/profile/design-system',
+  offlineData: '/profile/offline',
+  notificationSettings: '/profile/notifications',
   savedPlaces: '/saved',
   collection: (collectionId: string) =>
     ({ pathname: '/saved/collections/[collectionId]', params: { collectionId } }) satisfies Href,

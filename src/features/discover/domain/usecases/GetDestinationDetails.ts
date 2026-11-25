@@ -8,6 +8,7 @@ import {
   type DestinationCategory,
   type DestinationDetails,
   essentialsOf,
+  savedAtOf,
   type Neighbour,
   type PlaceDestinationDetails,
 } from '../Destination';
@@ -96,6 +97,7 @@ export class GetDestinationDetails implements UseCase<
       // The neighbour list is a nicety; without the catalogue it is simply omitted.
       neighbours: catalog.ok ? neighboursOf(country.value, catalog.value) : [],
       essentials: essentialsOf(country.value),
+      ...withSavedAt(savedAtOf(country.value, description.value)),
     });
   }
 
@@ -136,9 +138,13 @@ export class GetDestinationDetails implements UseCase<
       categories,
       country,
       essentials: country ? essentialsOf(country) : null,
+      ...withSavedAt(savedAtOf(country, description.value)),
     });
   }
 }
+
+/** Adds `savedAt` only when set, so current details keep the exact shape they always had. */
+const withSavedAt = (savedAt: number | undefined) => (savedAt === undefined ? {} : { savedAt });
 
 function neighboursOf(country: Country, catalog: readonly Country[]): Neighbour[] {
   const byCode3 = new Map(catalog.flatMap((candidate) => (candidate.code3 ? [[candidate.code3, candidate]] : [])));

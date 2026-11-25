@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { type AccessibilityActionEvent, Pressable, StyleSheet, View } from 'react-native';
 
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { MIN_TOUCH_TARGET } from '@/core/theme/tokens';
@@ -16,11 +16,34 @@ interface OptionGroupProps<T extends string> {
   readonly options: readonly Option<T>[];
   readonly value: T;
   readonly onChange: (value: T) => void;
+  /**
+   * Makes the group itself one focusable element that announces the selected
+   * option and offers one action per option, for screens with several groups in a
+   * row. On iOS the rows inside are then reached through those actions.
+   */
+  readonly focusableGroup?: boolean;
 }
 
 /** Accessible single-choice list (radio group) rendered as a grouped settings card. */
-export function OptionGroup<T extends string>({ title, options, value, onChange }: OptionGroupProps<T>) {
+export function OptionGroup<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+  focusableGroup = false,
+}: OptionGroupProps<T>) {
   const { colors, spacing, radii } = useAppTheme();
+  const groupAccessibility = focusableGroup
+    ? {
+        accessible: true,
+        accessibilityValue: { text: options.find((option) => option.value === value)?.label ?? '' },
+        accessibilityActions: options.map((option) => ({ name: option.value, label: option.label })),
+        onAccessibilityAction: (event: AccessibilityActionEvent) => {
+          const picked = options.find((option) => option.value === event.nativeEvent.actionName);
+          if (picked && picked.value !== value) onChange(picked.value);
+        },
+      }
+    : {};
 
   return (
     <View style={{ gap: spacing.sm }}>
@@ -35,6 +58,7 @@ export function OptionGroup<T extends string>({ title, options, value, onChange 
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={title}
+        {...groupAccessibility}
         style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md }]}
       >
         {options.map((option, index) => {

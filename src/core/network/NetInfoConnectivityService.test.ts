@@ -1,36 +1,36 @@
-import * as Network from 'expo-network';
+import { type NetInfoState } from '@react-native-community/netinfo';
 
 import { createTestLogger } from '@/testing/testDependencies';
 
-import { ExpoNetworkConnectivityService } from './ExpoNetworkConnectivityService';
+import { type NetInfoSource, NetInfoConnectivityService } from './NetInfoConnectivityService';
 
-jest.mock('expo-network', () => ({
-  addNetworkStateListener: jest.fn(),
-  getNetworkStateAsync: jest.fn(),
-  NetworkStateType: { NONE: 'NONE', WIFI: 'WIFI' },
-}));
+const wifi = { type: 'wifi', isConnected: true, isInternetReachable: true, details: null } as unknown as NetInfoState;
+const none = { type: 'none', isConnected: false, isInternetReachable: false, details: null } as unknown as NetInfoState;
+const unknown = {
+  type: 'unknown',
+  isConnected: null,
+  isInternetReachable: null,
+  details: null,
+} as unknown as NetInfoState;
 
-const addListener = jest.mocked(Network.addNetworkStateListener);
-const getState = jest.mocked(Network.getNetworkStateAsync);
-const wifi = { isConnected: true, isInternetReachable: true, type: Network.NetworkStateType.WIFI };
-const none = { isConnected: false, isInternetReachable: false, type: Network.NetworkStateType.NONE };
-
-function setup(initial: Network.NetworkState | Error = wifi) {
-  let emitNative: (state: Network.NetworkState) => void = () => undefined;
-  const remove = jest.fn();
-  addListener.mockImplementation((listener) => {
-    emitNative = listener;
-    return { remove };
-  });
-  getState.mockImplementation(() => (initial instanceof Error ? Promise.reject(initial) : Promise.resolve(initial)));
+function setup(initial: NetInfoState | Error = wifi) {
+  let emitNative: (state: NetInfoState) => void = () => undefined;
+  const unsubscribe = jest.fn();
+  const source: NetInfoSource = {
+    addEventListener: jest.fn((listener) => {
+      emitNative = listener;
+      return unsubscribe;
+    }),
+    fetch: jest.fn(() => (initial instanceof Error ? Promise.reject(initial) : Promise.resolve(initial))),
+  };
   const logger = createTestLogger();
-  const service = new ExpoNetworkConnectivityService(logger);
-  return { service, logger, remove, emitNative: (state: Network.NetworkState) => emitNative(state) };
+  const service = new NetInfoConnectivityService(logger, source);
+  return { service, logger, unsubscribe, emitNative: (state: NetInfoState) => emitNative(state) };
 }
 
 const flush = () => new Promise<void>((resolve) => setImmediate(() => resolve()));
 
-describe('ExpoNetworkConnectivityService', () => {
+describe('NetInfoConnectivityService', () => {
   it('starts unknown (treated as online), then adopts the initial reading', async () => {
     const { service } = setup();
     expect(service.getSnapshot().isConnected).toBeNull();
@@ -66,11 +66,18 @@ describe('ExpoNetworkConnectivityService', () => {
     expect(service.getSnapshot()).toBe(snapshot);
   });
 
-  it('ignores a stale initial reading that resolves after a live event', async () => {
+  it('ignores an initial reading that resolves after a live event', async () => {
     const { service, emitNative } = setup(wifi);
     emitNative(none);
     await flush();
     expect(service.isOffline()).toBe(true);
+  });
+
+  it('treats an unknown reading as online', async () => {
+    const { service } = setup(unknown);
+    await flush();
+    expect(service.getSnapshot()).toEqual({ isConnected: null, isInternetReachable: null, type: 'unknown' });
+    expect(service.isOffline()).toBe(false);
   });
 
   it('logs and stays unknown if the initial reading fails', async () => {
@@ -81,8 +88,8 @@ describe('ExpoNetworkConnectivityService', () => {
   });
 
   it('removes the native listener on dispose', () => {
-    const { service, remove } = setup();
+    const { service, unsubscribe } = setup();
     service.dispose();
-    expect(remove).toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalled();
   });
 });

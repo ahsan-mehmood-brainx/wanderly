@@ -1,11 +1,15 @@
 import { router } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '@/core/i18n/languages';
 import { useAppTheme } from '@/core/theme/ThemeProvider';
 import { useSignOut } from '@/features/auth/presentation/hooks/useSignOut';
+import {
+  type NotificationPermissionSetting,
+  useNotificationPermissionSetting,
+} from '@/features/notifications/presentation/hooks/useNotificationPermissionSetting';
 import { routes } from '@/shared/navigation/routes';
 import {
   AppButton,
@@ -18,14 +22,23 @@ import {
   ListNavRow,
   OptionGroup,
   Screen,
+  SettingsSection,
   type Option,
 } from '@/shared/ui';
 
-import { THEME_PREFERENCES, type LanguagePreference, type ThemePreference } from '../../domain/Preferences';
+import {
+  THEME_PREFERENCES,
+  type LanguagePreference,
+  type NotificationPreference,
+  type ThemePreference,
+} from '../../domain/Preferences';
 import { CurrencyPreferenceSheet } from '../components/CurrencyPreferenceSheet';
 import { SettingSwitchRow } from '../components/SettingSwitchRow';
 import { useLocationPermissionSetting } from '../hooks/useLocationPermissionSetting';
 import { usePreferenceSettings } from '../hooks/usePreferenceSettings';
+
+/** Local notifications and background tasks only exist in the iOS and Android apps. */
+const NOTIFICATIONS_SUPPORTED = Platform.OS !== 'web';
 
 export function SettingsScreen() {
   const { t } = useTranslation();
@@ -33,6 +46,19 @@ export function SettingsScreen() {
   const { theme, language, deviceLanguage, currency, deviceCurrency, notifications } = settings;
   const { confirmSignOut, pending: signOutPending } = useSignOut();
   const [currencySheetOpen, setCurrencySheetOpen] = useState(false);
+  const notificationPermission = useNotificationPermissionSetting();
+  const { permission } = notificationPermission;
+  const showNotificationAccess =
+    NOTIFICATIONS_SUPPORTED &&
+    (notifications.tripReminders || notifications.budgetAlerts) &&
+    permission !== null &&
+    permission !== 'granted';
+
+  // The switch is saved straight away; the system prompt only appears the first time one is turned on.
+  const setNotification = (key: NotificationPreference, enabled: boolean) => {
+    settings.setNotification(key, enabled);
+    if (enabled && NOTIFICATIONS_SUPPORTED) notificationPermission.requestIfUndetermined();
+  };
 
   const themeOptions = useMemo<Option<ThemePreference>[]>(
     () =>
@@ -81,7 +107,7 @@ export function SettingsScreen() {
         onChange={settings.setLanguage}
       />
 
-      <Section title={t('settings.currency.title')} caption={t('settings.currency.hint')}>
+      <SettingsSection title={t('settings.currency.title')} caption={t('settings.currency.hint')}>
         <ListGroup>
           <ListNavRow
             icon="currency"
@@ -90,41 +116,62 @@ export function SettingsScreen() {
             onPress={() => setCurrencySheetOpen(true)}
           />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.notifications.title')} caption={t('settings.notifications.notSentYet')}>
+      <SettingsSection
+        title={t('settings.notifications.title')}
+        caption={t(NOTIFICATIONS_SUPPORTED ? 'settings.notifications.hint' : 'settings.notifications.webHint')}
+      >
         <ListGroup>
           <SettingSwitchRow
             icon="calendar"
             label={t('settings.notifications.tripReminders')}
             value={notifications.tripReminders}
-            onChange={(enabled) => settings.setNotification('tripReminders', enabled)}
+            onChange={(enabled) => setNotification('tripReminders', enabled)}
           />
           <AppDivider inset="xxxl" />
           <SettingSwitchRow
             icon="wallet"
             label={t('settings.notifications.budgetAlerts')}
             value={notifications.budgetAlerts}
-            onChange={(enabled) => settings.setNotification('budgetAlerts', enabled)}
+            onChange={(enabled) => setNotification('budgetAlerts', enabled)}
+          />
+          {showNotificationAccess ? (
+            <>
+              <AppDivider inset="xxxl" />
+              <NotificationAccessRow setting={notificationPermission} />
+            </>
+          ) : null}
+          <AppDivider inset="xxxl" />
+          <ListNavRow
+            icon="clock"
+            label={t('settings.notifications.reminderTimes')}
+            onPress={() => router.push(routes.notificationSettings)}
           />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.location.title')} caption={t('settings.location.hint')}>
+      <SettingsSection title={t('settings.location.title')} caption={t('settings.location.hint')}>
         <ListGroup>
           <LocationAccessRow />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.info.title')}>
+      <SettingsSection title={t('settings.offline.title')} caption={t('settings.offline.hint')}>
+        <ListGroup>
+          <ListNavRow icon="cloud" label={t('settings.offline.row')} onPress={() => router.push(routes.offlineData)} />
+        </ListGroup>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.info.title')}>
         <ListGroup>
           <ListNavRow icon="lock" label={t('settings.info.privacy')} onPress={() => router.push(routes.privacy)} />
           <AppDivider inset="xxxl" />
           <ListNavRow icon="info" label={t('settings.info.about')} onPress={() => router.push(routes.about)} />
         </ListGroup>
-      </Section>
+      </SettingsSection>
 
-      <Section title={t('settings.account.title')}>
+      <SettingsSection title={t('settings.account.title')}>
         <AppButton
           label={t('auth.profile.signOut')}
           variant="outline"
@@ -133,7 +180,7 @@ export function SettingsScreen() {
           loading={signOutPending}
           onPress={confirmSignOut}
         />
-      </Section>
+      </SettingsSection>
 
       {__DEV__ ? <DeveloperSection /> : null}
 
@@ -148,28 +195,6 @@ export function SettingsScreen() {
         }}
       />
     </Screen>
-  );
-}
-
-function Section({ title, caption, children }: { title: string; caption?: string; children: ReactNode }) {
-  const { spacing } = useAppTheme();
-  return (
-    <View style={{ gap: spacing.sm }}>
-      <AppText
-        variant="sectionTitle"
-        color="textSecondary"
-        accessibilityRole="header"
-        style={{ paddingHorizontal: spacing.xs }}
-      >
-        {title}
-      </AppText>
-      {children}
-      {caption ? (
-        <AppText variant="caption" color="textSecondary" style={{ paddingHorizontal: spacing.xs }}>
-          {caption}
-        </AppText>
-      ) : null}
-    </View>
   );
 }
 
@@ -196,6 +221,33 @@ function LocationAccessRow() {
       {permission === 'blocked' || permission === 'granted' ? (
         <AppButton label={t('settings.location.openSettings')} size="sm" variant="outline" onPress={openSettings} />
       ) : null}
+    </View>
+  );
+}
+
+/** Shown while a notification switch is on but the OS doesn't let Wanderly notify. */
+function NotificationAccessRow({ setting }: { readonly setting: NotificationPermissionSetting }) {
+  const { t } = useTranslation();
+  const { spacing, sizes } = useAppTheme();
+  const { permission, requesting, request, openSettings } = setting;
+
+  return (
+    <View
+      testID="notification-access"
+      style={[styles.row, { minHeight: sizes.touchTarget, padding: spacing.lg, gap: spacing.md }]}
+    >
+      <AppIcon name="warning" size="md" color="warning" />
+      <AppText style={styles.fill}>{t('settings.notifications.off')}</AppText>
+      {permission === 'blocked' ? (
+        <AppButton
+          label={t('settings.notifications.openSettings')}
+          size="sm"
+          variant="outline"
+          onPress={openSettings}
+        />
+      ) : (
+        <AppButton label={t('settings.notifications.allow')} size="sm" loading={requesting} onPress={request} />
+      )}
     </View>
   );
 }

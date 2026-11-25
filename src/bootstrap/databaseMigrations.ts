@@ -1,4 +1,6 @@
+import { CACHE_MIGRATIONS } from '@/core/cache/cacheMigrations';
 import { type Migration } from '@/core/database/migrations';
+import { SYNC_MIGRATIONS } from '@/core/sync/syncMigrations';
 import { BUDGET_MIGRATIONS } from '@/features/budget/data/budgetMigrations';
 import { FAVORITES_MIGRATIONS } from '@/features/favorites/data/favoritesMigrations';
 import { ITINERARY_MIGRATIONS } from '@/features/itinerary/data/itineraryMigrations';
@@ -18,4 +20,6 @@ export const APP_MIGRATIONS: readonly Migration[] = [
   ...FAVORITES_MIGRATIONS,
   ...BUDGET_MIGRATIONS,
   ...PHOTOS_MIGRATIONS,
+  ...CACHE_MIGRATIONS,
+  ...SYNC_MIGRATIONS,
 ];

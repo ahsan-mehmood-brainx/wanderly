@@ -1,11 +1,13 @@
-import { screen, userEvent, waitFor } from '@testing-library/react-native';
+import { cleanup, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { Linking } from 'react-native';
 
 import { routes } from '@/shared/navigation/routes';
 import { httpFailure, stubDiscoverApis, summaryDto } from '@/testing/discoverFixtures';
 import { apiSuccess, type FakeHttpClient, FakeHttpClientFactory } from '@/testing/FakeHttpClient';
+import { FakeConnectivityService, OFFLINE } from '@/testing/FakeConnectivityService';
 import { ManualClock } from '@/testing/ManualClock';
+import { createOfflineStorage } from '@/testing/offlineFixtures';
 import { renderWithProviders } from '@/testing/renderWithProviders';
 import { forecastDto, stubWeatherApi, WEATHER_NOW } from '@/testing/weatherFixtures';
 
@@ -201,5 +203,41 @@ describe('DestinationScreen', () => {
 
       expect(await screen.findByLabelText('Portugal: 15°, Partly cloudy')).toBeOnTheScreen();
     });
+  });
+});
+
+describe('DestinationScreen offline', () => {
+  it('after a restart while offline, shows the saved copy and says how old it is', async () => {
+    // One device cache shared by both "launches"; everything else starts fresh, as after a restart.
+    const { cacheStore } = createOfflineStorage();
+    const onlineFactory = new FakeHttpClientFactory();
+    stubDiscoverApis(onlineFactory);
+    stubWeatherApi(onlineFactory);
+    await renderWithProviders(<DestinationScreen destinationId="country-pt" />, {
+      dependencies: { httpClientFactory: onlineFactory, clock: new ManualClock(WEATHER_NOW), cacheStore },
+    });
+    expect(await screen.findByText('Portugal is a lovely place.')).toBeOnTheScreen();
+    expect(screen.queryByTestId('destination-saved-notice')).toBeNull();
+    await cleanup();
+
+    const offlineFactory = new FakeHttpClientFactory();
+    for (const api of ['restcountries', 'wikipedia', 'open-meteo']) {
+      offlineFactory.client(api).otherwise(() => httpFailure('offline'));
+    }
+    await renderWithProviders(<DestinationScreen destinationId="country-pt" />, {
+      dependencies: {
+        httpClientFactory: offlineFactory,
+        clock: new ManualClock(WEATHER_NOW + 2 * 24 * 60 * 60_000),
+        cacheStore,
+        connectivity: new FakeConnectivityService(OFFLINE),
+      },
+    });
+
+    expect(await screen.findByRole('header', { name: 'Portugal' })).toBeOnTheScreen();
+    expect(screen.getByText('Portugal is a lovely place.')).toBeOnTheScreen();
+    expect(screen.getByTestId('destination-saved-notice')).toHaveTextContent(
+      "You're offline. Showing information saved 2 days ago. It refreshes when you're back online.",
+      { exact: false },
+    );
   });
 });

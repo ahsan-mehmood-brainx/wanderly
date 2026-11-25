@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { type AppErrorKind } from '@/core/errors/AppError';
 import { useAppDispatch, useAppSelector } from '@/core/store/hooks';
 import { useTrip } from '@/features/trips/presentation/hooks/useTrips';
+import { useConnectivity } from '@/shared/hooks/useConnectivity';
 
 import { loadTripExpenses, retryConversions } from '../state/budgetSlice';
 import {
@@ -63,6 +64,18 @@ export function useTripBudget(tripId: string, { convert = true }: TripBudgetOpti
 
   const expenses = useAppSelector((state) => selectTripExpenses(state, tripId));
   const summary = useAppSelector((state) => selectBudgetSummary(state, tripId));
+
+  // Expenses added offline are saved unconverted; convert them as soon as the device is back online.
+  const { isOffline } = useConnectivity();
+  const wasOffline = useRef(isOffline);
+  const unconverted = summary?.unconvertedCount ?? 0;
+  useEffect(() => {
+    const cameOnline = wasOffline.current && !isOffline;
+    wasOffline.current = isOffline;
+    if (cameOnline && convert && status === 'ready' && unconverted > 0 && !running) {
+      void dispatch(retryConversions(tripId));
+    }
+  }, [convert, dispatch, isOffline, running, status, tripId, unconverted]);
 
   const screen: BudgetScreenState = useMemo(() => {
     if (!trip) {

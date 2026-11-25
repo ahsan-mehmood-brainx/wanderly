@@ -824,6 +824,12 @@ export const es: TranslationResources = {
       'Los servicios de datos de países no incluyen ciudades ni atracciones, así que los detalles provienen de Wikipedia y pueden ser limitados.',
     flagOf: 'Bandera de {{country}}',
     photoOf: 'Foto de {{name}}',
+    saved: {
+      title: 'Información guardada',
+      offline:
+        'Estás sin conexión. Mostramos la información guardada {{age}}. Se actualizará cuando vuelvas a tener conexión.',
+      error: 'No pudimos actualizar este destino. Mostramos la información guardada {{age}}.',
+    },
   },
   weather: {
     title: 'El tiempo',
@@ -1031,7 +1037,12 @@ export const es: TranslationResources = {
       title: 'Notificaciones',
       tripReminders: 'Recordatorios de viaje',
       budgetAlerts: 'Alertas de presupuesto',
-      notSentYet: 'Wanderly aún no envía notificaciones. Tus preferencias se guardan para cuando lo haga.',
+      hint: 'Los recordatorios se programan en este dispositivo. Tu teléfono decide el momento exacto, así que pueden llegar un poco tarde.',
+      webHint: 'Los recordatorios y las alertas funcionan en la app de Wanderly para iPhone y Android.',
+      off: 'Las notificaciones de Wanderly están desactivadas',
+      allow: 'Permitir',
+      openSettings: 'Abrir Ajustes',
+      reminderTimes: 'Horarios de recordatorio',
     },
     location: {
       title: 'Ubicación',
@@ -1058,6 +1069,56 @@ export const es: TranslationResources = {
       title: 'Desarrollo',
       designSystem: 'Sistema de diseño',
     },
+    offline: {
+      title: 'Sin conexión',
+      row: 'Sin conexión y datos',
+      hint: 'Consulta qué funciona sin conexión y gestiona la información guardada.',
+    },
+  },
+  notifications: {
+    settings: {
+      title: 'Horarios de recordatorio',
+      intro:
+        'Los recordatorios de viaje llegan a las {{time}} en tu dispositivo. Activa Recordatorios de viaje o Alertas de presupuesto en Ajustes.',
+      upcomingTrip: 'Recordatorio de viaje próximo',
+      tripStart: 'Recordatorio de inicio del viaje',
+      tripStartHint: 'A las {{time}} del primer día',
+      activity: 'Recordatorio de actividad',
+      budget: 'Umbral de alerta de presupuesto',
+      off: 'Desactivado',
+      daysBefore_one: '{{count}} día antes',
+      daysBefore_other: '{{count}} días antes',
+      minutesBefore: '{{count}} min antes',
+      hoursBefore_one: '{{count}} hora antes',
+      hoursBefore_other: '{{count}} horas antes',
+      percentSpent: '{{percent}} % gastado',
+      loadError: 'No pudimos cargar tus horarios de recordatorio. Se muestran los predeterminados.',
+      saveError: 'No pudimos guardar este cambio. Inténtalo de nuevo.',
+    },
+    channels: {
+      reminders: 'Recordatorios de viaje',
+      budget: 'Alertas de presupuesto',
+    },
+    content: {
+      tripUpcoming: {
+        title: 'Viaje próximo',
+        body_one: '{{tripTitle}} a {{destination}} empieza mañana.',
+        body_other: '{{tripTitle}} a {{destination}} empieza en {{count}} días.',
+      },
+      tripStart: {
+        title: 'Tu viaje empieza hoy',
+        body: '{{tripTitle}} a {{destination}} comienza hoy.',
+      },
+      activity: {
+        title: 'Próximamente: {{activityTitle}}',
+        body: 'Empieza a las {{time}} · {{tripTitle}}',
+        bodyTomorrow: 'Mañana a las {{time}} · {{tripTitle}}',
+      },
+      budget: {
+        title: 'Alerta de presupuesto',
+        body: '{{tripTitle}}: has gastado el {{percent}} % del presupuesto.',
+      },
+    },
   },
   privacy: {
     title: 'Privacidad',
@@ -1065,7 +1126,7 @@ export const es: TranslationResources = {
       'Wanderly guarda tus planes de viaje en este dispositivo. Esto es lo que guarda y los servicios con los que se comunica.',
     device: {
       title: 'Guardado en este dispositivo',
-      body: 'Tus viajes, itinerarios, presupuestos, gastos, lugares guardados y perfil local se guardan solo en este teléfono, por separado para cada cuenta. Tus ajustes también se guardan en este teléfono y los comparten todas las cuentas que inician sesión en él. Tu sesión se guarda en almacenamiento seguro.',
+      body: 'Tus viajes, itinerarios, presupuestos, gastos, lugares guardados y perfil local se guardan solo en este teléfono, por separado para cada cuenta. Tus ajustes también se guardan en este teléfono y los comparten todas las cuentas que inician sesión en él. Tu sesión se guarda en almacenamiento seguro. La información de los destinos que viste se guarda aquí hasta 30 días para que se abra sin conexión; puedes borrarla en Ajustes › Sin conexión y datos.',
     },
     location: {
       title: 'Tu ubicación',
@@ -1231,6 +1292,61 @@ export const es: TranslationResources = {
       notFoundTitle: 'Foto no encontrada',
       notFoundMessage: 'Puede que se haya eliminado.',
       backToGallery: 'Volver a las fotos',
+    },
+  },
+  offline: {
+    indicator: {
+      offline: 'Sin conexión',
+      backOnline: 'Conectado de nuevo',
+      offlineA11y: 'Estás sin conexión. Tus cambios se guardan en este dispositivo. Abre Sin conexión y datos.',
+      backOnlineA11y: 'Vuelves a tener conexión. Abre Sin conexión y datos.',
+      announceOffline: 'Estás sin conexión. Tus cambios se guardan en este dispositivo.',
+      announceOnline: 'Vuelves a tener conexión.',
+    },
+    screen: {
+      title: 'Sin conexión y datos',
+      connectionTitle: 'Conexión',
+      online: 'Conectado',
+      onlineVia: 'Conectado ({{type}})',
+      offline: 'Sin conexión',
+      connectionTypes: {
+        wifi: 'wifi',
+        cellular: 'datos móviles',
+        ethernet: 'Ethernet',
+        bluetooth: 'Bluetooth',
+        vpn: 'VPN',
+        wimax: 'WiMAX',
+      },
+      checking: 'Comprobando la conexión',
+      offlineHint:
+        'Los viajes, itinerarios, gastos y lugares guardados siguen funcionando. Los destinos que ya viste se abren desde este dispositivo.',
+      onlineHint: 'La información de internet se actualiza sola cuando está desactualizada.',
+      yourDataTitle: 'Tus datos',
+      yourDataHint:
+        'Los viajes, itinerarios, gastos y lugares guardados se almacenan en este dispositivo y funcionan sin conexión.',
+      localOnly:
+        'Wanderly aún no tiene cuentas en la nube, así que tus datos no se copian a tus otros dispositivos ni Wanderly hace copias de seguridad.',
+      unsynced_one: '{{count}} cambio guardado solo en este dispositivo',
+      unsynced_other: '{{count}} cambios guardados solo en este dispositivo',
+      noUnsynced: 'No hay cambios pendientes',
+      unsyncedHint: 'Los cambios quedan registrados para que una futura copia en la nube pueda subirlos.',
+      waiting_one: '{{count}} cambio pendiente de subir',
+      waiting_other: '{{count}} cambios pendientes de subir',
+      failed_one: 'No se pudo subir {{count}} cambio',
+      failed_other: 'No se pudieron subir {{count}} cambios',
+      retryFailed: 'Reintentar',
+      savedInfoTitle: 'Información de destinos guardada',
+      savedInfoHint: 'Los países y destinos que viste se guardan hasta 30 días para que se abran sin conexión.',
+      savedInfoEmpty: 'Aún no hay nada guardado',
+      savedInfoCount_one: '{{count}} elemento, {{size}}',
+      savedInfoCount_other: '{{count}} elementos, {{size}}',
+      savedInfoUpdated: 'Última actualización {{age}}',
+      clearSaved: 'Borrar la información guardada',
+      clearConfirmTitle: '¿Borrar la información guardada?',
+      clearConfirmMessage:
+        'La información de destinos se descargará de nuevo la próxima vez que tengas conexión. Tus viajes, gastos y lugares guardados se mantienen.',
+      clearConfirm: 'Borrar',
+      cleared: 'Información guardada borrada.',
     },
   },
 };
